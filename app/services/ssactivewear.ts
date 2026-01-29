@@ -76,6 +76,17 @@ export class SSActiveWearClient {
       }
   }
 
+  async getProducts(styleId: number): Promise<any[]> {
+    try {
+      const response = await this.client.get(`/products?style=${styleId}`);
+      return response.data;
+    } catch (error) {
+      console.error(`Error fetching products for style ${styleId}:`, error);
+      throw error;
+    }
+  }
+
+
   async placeOrder(orderData: any): Promise<any> {
     try {
       const response = await this.client.post("/orders/", orderData);
