@@ -1,0 +1,23 @@
+{% schema %}
+{
+  "name": "SSActive Order Matrix",
+  "target": "section",
+  "templates": ["product"],
+  "settings": [
+    { "type": "color", "id": "primary_color", "label": "Primary Color", "default": "#000000" }
+  ]
+}
+{% endschema %}
+
+<div
+  id="ss-matrix-widget"
+  data-product-id="{{ product.id }}"
+  data-variants='{{ product.variants | json }}'
+  style="padding: 20px; border: 1px solid #e1e3e5; border-radius: 8px; margin-top: 20px;"
+>
+  <h3>Bulk Order Matrix</h3>
+  <div id="ss-matrix-loading">Loading live inventory...</div>
+  <div id="ss-matrix-content" style="display:none;"></div>
+</div>
+
+<script src="{{ 'matrix.js' | asset_url }}" defer></script>

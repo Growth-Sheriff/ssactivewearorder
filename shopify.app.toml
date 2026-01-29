@@ -1,0 +1,36 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "d5568d43c70e94118794afd517b5d8ef"
+name = "s"
+application_url = "https://ssaw-e.techifyboost.com"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+include_config_on_deploy = true
+
+[webhooks]
+api_version = "2026-04"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "write_products,read_products,write_orders,read_orders"
+
+[app_proxy]
+url = "https://ssaw-e.techifyboost.com/api/graphql"
+subpath = "ssactiveorder"
+prefix = "apps"
+
+[auth]
+redirect_urls = [
+  "https://ssaw-e.techifyboost.com/api/auth",
+  "https://ssaw-e.techifyboost.com/api/auth/callback"
+]
