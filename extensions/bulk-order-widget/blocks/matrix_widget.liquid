@@ -1,23 +1,282 @@
 {% schema %}
 {
-  "name": "SSActive Order Matrix",
+  "name": "SSActive Bulk Order",
   "target": "section",
   "templates": ["product"],
   "settings": [
-    { "type": "color", "id": "primary_color", "label": "Primary Color", "default": "#000000" }
+    {
+      "type": "color",
+      "id": "primary_color",
+      "label": "Primary Color",
+      "default": "#000000"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Accent Color",
+      "default": "#4CAF50"
+    },
+    {
+      "type": "select",
+      "id": "layout",
+      "label": "Layout Style",
+      "options": [
+        { "value": "compact", "label": "Compact" },
+        { "value": "expanded", "label": "Expanded Matrix" }
+      ],
+      "default": "expanded"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_warehouse",
+      "label": "Show Warehouse Details",
+      "default": false
+    },
+    {
+      "type": "text",
+      "id": "button_text",
+      "label": "Add to Cart Button Text",
+      "default": "Add Selected to Cart"
+    }
   ]
 }
 {% endschema %}
 
+<style>
+  .ss-bulk-order-widget {
+    padding: 24px;
+    border: 1px solid #e1e3e5;
+    border-radius: 12px;
+    margin-top: 24px;
+    background: linear-gradient(to bottom, #fafbfc, #ffffff);
+  }
+
+  .ss-bulk-order-widget h3 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .ss-bulk-order-widget h3 svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .ss-loading {
+    text-align: center;
+    padding: 40px;
+    color: #637381;
+  }
+
+  .ss-loading-spinner {
+    display: inline-block;
+    width: 32px;
+    height: 32px;
+    border: 3px solid #e1e3e5;
+    border-top-color: {{ block.settings.primary_color }};
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .ss-matrix-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+
+  .ss-matrix-table th {
+    background: #f6f6f7;
+    padding: 12px 8px;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 2px solid #e1e3e5;
+  }
+
+  .ss-matrix-table td {
+    padding: 10px 8px;
+    border-bottom: 1px solid #f0f0f0;
+    vertical-align: middle;
+  }
+
+  .ss-matrix-table tr:hover {
+    background: #fafbfc;
+  }
+
+  .ss-stock-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .ss-stock-high {
+    background: #E3F5E1;
+    color: #1B7F1B;
+  }
+
+  .ss-stock-medium {
+    background: #FFF8E1;
+    color: #B86E00;
+  }
+
+  .ss-stock-low {
+    background: #FFE5E5;
+    color: #CC0000;
+  }
+
+  .ss-stock-none {
+    background: #f0f0f0;
+    color: #999;
+  }
+
+  .ss-qty-input {
+    width: 70px;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    text-align: center;
+    font-size: 14px;
+    transition: border-color 0.2s;
+  }
+
+  .ss-qty-input:focus {
+    outline: none;
+    border-color: {{ block.settings.primary_color }};
+    box-shadow: 0 0 0 2px {{ block.settings.primary_color }}20;
+  }
+
+  .ss-qty-input:disabled {
+    background: #f5f5f5;
+    cursor: not-allowed;
+  }
+
+  .ss-add-to-cart-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    margin-top: 20px;
+    padding: 14px 24px;
+    background: {{ block.settings.primary_color }};
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .ss-add-to-cart-btn:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px {{ block.settings.primary_color }}40;
+  }
+
+  .ss-add-to-cart-btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  .ss-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    background: #f6f6f7;
+    border-radius: 8px;
+    margin-top: 16px;
+  }
+
+  .ss-summary-item {
+    text-align: center;
+  }
+
+  .ss-summary-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: {{ block.settings.primary_color }};
+  }
+
+  .ss-summary-label {
+    font-size: 12px;
+    color: #637381;
+  }
+
+  .ss-warehouse-details {
+    font-size: 11px;
+    color: #666;
+    margin-top: 4px;
+  }
+
+  .ss-error {
+    background: #FFE5E5;
+    color: #CC0000;
+    padding: 16px;
+    border-radius: 8px;
+    text-align: center;
+  }
+
+  .ss-success-toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: {{ block.settings.accent_color }};
+    color: white;
+    padding: 16px 24px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 9999;
+    animation: slideIn 0.3s ease;
+  }
+
+  @keyframes slideIn {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+</style>
+
 <div
-  id="ss-matrix-widget"
+  class="ss-bulk-order-widget"
+  id="ss-matrix-widget-{{ block.id }}"
   data-product-id="{{ product.id }}"
   data-variants='{{ product.variants | json }}'
-  style="padding: 20px; border: 1px solid #e1e3e5; border-radius: 8px; margin-top: 20px;"
+  data-layout="{{ block.settings.layout }}"
+  data-show-warehouse="{{ block.settings.show_warehouse }}"
+  data-button-text="{{ block.settings.button_text }}"
+  data-primary-color="{{ block.settings.primary_color }}"
 >
-  <h3>Bulk Order Matrix</h3>
-  <div id="ss-matrix-loading">Loading live inventory...</div>
-  <div id="ss-matrix-content" style="display:none;"></div>
+  <h3>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M3 3h18v18H3zM3 9h18M9 21V9"/>
+    </svg>
+    Bulk Order Matrix
+  </h3>
+
+  <div id="ss-loading-{{ block.id }}" class="ss-loading">
+    <div class="ss-loading-spinner"></div>
+    <p style="margin-top: 12px;">Loading live inventory data...</p>
+  </div>
+
+  <div id="ss-content-{{ block.id }}" style="display: none;"></div>
+  <div id="ss-error-{{ block.id }}" class="ss-error" style="display: none;"></div>
 </div>
 
 <script src="{{ 'matrix.js' | asset_url }}" defer></script>

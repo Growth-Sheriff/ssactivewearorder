@@ -221,4 +221,69 @@ export class SSActiveWearClient {
       throw error;
     }
   }
+
+  // Get all brands
+  async getBrands(): Promise<any[]> {
+    if (!this.isConfigured) {
+      throw new Error("API credentials not configured");
+    }
+    try {
+      console.log("[SSActiveWear] Fetching all brands...");
+      const response = await this.client.get("/brands/");
+      console.log(`[SSActiveWear] Got ${response.data?.length || 0} brands`);
+      return response.data;
+    } catch (error: any) {
+      console.error("[SSActiveWear] Error fetching brands:", error?.response?.data || error?.message);
+      throw error;
+    }
+  }
+
+  // Get all styles (full catalog)
+  async getAllStyles(): Promise<SSStyle[]> {
+    if (!this.isConfigured) {
+      throw new Error("API credentials not configured");
+    }
+    try {
+      console.log("[SSActiveWear] Fetching ALL styles (this may take a while)...");
+      const response = await this.client.get("/styles/");
+      console.log(`[SSActiveWear] Got ${response.data?.length || 0} styles`);
+      return response.data;
+    } catch (error: any) {
+      console.error("[SSActiveWear] Error fetching all styles:", error?.response?.data || error?.message);
+      throw error;
+    }
+  }
+
+  // Get styles by brand
+  async getStylesByBrand(brandName: string): Promise<SSStyle[]> {
+    if (!this.isConfigured) {
+      throw new Error("API credentials not configured");
+    }
+    try {
+      console.log(`[SSActiveWear] Fetching styles for brand: ${brandName}...`);
+      const response = await this.client.get(`/styles?search=${encodeURIComponent(brandName)}`);
+      console.log(`[SSActiveWear] Got ${response.data?.length || 0} styles for ${brandName}`);
+      return response.data;
+    } catch (error: any) {
+      console.error(`[SSActiveWear] Error fetching styles for brand ${brandName}:`, error?.response?.data || error?.message);
+      throw error;
+    }
+  }
+
+  // Get SSActiveWear orders
+  async getOrders(all: boolean = false): Promise<any[]> {
+    if (!this.isConfigured) {
+      throw new Error("API credentials not configured");
+    }
+    try {
+      const endpoint = all ? "/orders/?All=True" : "/orders/";
+      console.log(`[SSActiveWear] Fetching orders...`);
+      const response = await this.client.get(endpoint);
+      console.log(`[SSActiveWear] Got ${response.data?.length || 0} orders`);
+      return response.data;
+    } catch (error: any) {
+      console.error("[SSActiveWear] Error fetching orders:", error?.response?.data || error?.message);
+      throw error;
+    }
+  }
 }

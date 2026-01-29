@@ -35,9 +35,12 @@ model Session {
 
 model ProductMap {
   id               String       @id @default(uuid())
+  shop             String       @default("")
   shopifyProductId String       @unique
   ssStyleId        String
   variants         VariantMap[]
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 }
 
 model VariantMap {
@@ -49,9 +52,61 @@ model VariantMap {
 }
 
 model OrderJob {
-  id             String  @id @default(uuid())
+  id             String   @id @default(uuid())
+  shop           String   @default("")
   shopifyOrderId String
-  status         String
+  shopifyOrderNumber String?
+  status         String   // pending, submitted, shipped, error
   ssOrderNumber  String?
+  ssOrderGuid    String?
   logs           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// SSActiveWear Catalog Cache
+model SSBrand {
+  id            String    @id @default(uuid())
+  brandId       Int       @unique
+  name          String
+  image         String?
+  noeRetailing  Boolean   @default(false)
+  stylesCount   Int       @default(0)
+  updatedAt     DateTime  @updatedAt
+}
+
+model SSCategory {
+  id          String   @id @default(uuid())
+  categoryId  Int      @unique
+  name        String
+  parentId    Int?
+  stylesCount Int      @default(0)
+  updatedAt   DateTime @updatedAt
+}
+
+model SSStyleCache {
+  id              String   @id @default(uuid())
+  styleId         Int      @unique
+  partNumber      String
+  brandId         Int
+  brandName       String
+  styleName       String
+  title           String
+  description     String?
+  baseCategory    String
+  categories      String   // comma separated category IDs
+  styleImage      String?
+  sustainableStyle Boolean @default(false)
+  productCount    Int      @default(0)
+  updatedAt       DateTime @updatedAt
+}
+
+model CatalogSyncLog {
+  id         String   @id @default(uuid())
+  syncType   String   // brands, categories, styles
+  status     String   // running, completed, failed
+  itemsCount Int      @default(0)
+  error      String?
+  startedAt  DateTime @default(now())
+  completedAt DateTime?
 }
