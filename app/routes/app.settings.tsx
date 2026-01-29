@@ -300,6 +300,24 @@ export default function SettingsPage() {
           </BlockStack>
         </Card>
 
+        {/* Catalog Sync */}
+        <Card>
+          <BlockStack gap="400">
+            <Text as="h2" variant="headingMd">
+              Catalog Cache & Sync
+            </Text>
+            <Text as="p" variant="bodySm" tone="subdued">
+              Cache SSActiveWear catalog locally for faster browsing and reduced API calls.
+            </Text>
+            <Divider />
+            <InlineStack gap="300">
+              <Button url="/app/sync">
+                Manage Catalog Sync
+              </Button>
+            </InlineStack>
+          </BlockStack>
+        </Card>
+
         {/* Save Button */}
         <InlineStack align="end">
           <Button variant="primary" size="large" onClick={handleSave}>
