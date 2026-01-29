@@ -8,9 +8,10 @@ export interface SSStyle {
   title: string;
   description: string;
   baseCategory: string;
-  categories: string; // Comma separated IDs
+  categories: string;
   brandImage: string;
   styleImage: string;
+  sustainableStyle?: boolean;
 }
 
 export interface SSCategory {
@@ -19,12 +20,58 @@ export interface SSCategory {
   image: string;
 }
 
+export interface SSWarehouse {
+  warehouseAbbr: string;
+  skuID: number;
+  qty: number;
+  closeout?: boolean;
+  dropship?: boolean;
+  returnable?: boolean;
+}
+
+export interface SSProduct {
+  sku: string;
+  gtin: string;
+  skuID_Master: number;
+  styleID: number;
+  brandName: string;
+  styleName: string;
+  colorName: string;
+  colorCode: string;
+  colorGroupName: string;
+  colorFamily: string;
+  colorSwatchImage: string;
+  colorSwatchTextColor: string;
+  colorFrontImage: string;
+  colorSideImage: string;
+  colorBackImage: string;
+  colorDirectSideImage: string;
+  colorOnModelFrontImage: string;
+  colorOnModelSideImage: string;
+  colorOnModelBackImage: string;
+  color1: string;
+  color2: string;
+  sizeName: string;
+  sizeCode: string;
+  sizeOrder: string;
+  caseQty: number;
+  unitWeight: number;
+  mapPrice: number;
+  piecePrice: number;
+  dozenPrice: number;
+  casePrice: number;
+  customerPrice: number;
+  salePrice?: number;
+  qty: number;
+  countryOfOrigin: string;
+  warehouses: SSWarehouse[];
+}
+
 export interface SSInventory {
   sku: string;
-  warehouses: {
-    warehouseAbbr: string;
-    qty: number;
-  }[];
+  gtin: string;
+  styleID: number;
+  warehouses: SSWarehouse[];
 }
 
 export class SSActiveWearClient {
@@ -38,7 +85,7 @@ export class SSActiveWearClient {
     this.isConfigured = !!(userId && apiKey);
 
     if (!this.isConfigured) {
-      console.warn("SSActiveWear credentials not found in environment.");
+      console.warn("[SSActiveWear] Credentials not found in environment.");
     }
 
     this.client = axios.create({
@@ -50,8 +97,25 @@ export class SSActiveWearClient {
       headers: {
         "Content-Type": "application/json",
       },
-      timeout: 30000, // 30 second timeout
+      timeout: 60000, // 60 second timeout for large requests
     });
+  }
+
+  // Build full image URL from SSActiveWear
+  static buildImageUrl(imagePath: string, size: 'small' | 'medium' | 'large' = 'medium'): string {
+    if (!imagePath) return "";
+    if (imagePath.startsWith("http")) return imagePath;
+
+    // Replace size suffix based on requested size
+    // _fs = small, _fm = medium, _fl = large
+    let finalPath = imagePath;
+    if (size === 'large') {
+      finalPath = imagePath.replace(/_fm\./g, '_fl.').replace(/_fs\./g, '_fl.');
+    } else if (size === 'small') {
+      finalPath = imagePath.replace(/_fm\./g, '_fs.').replace(/_fl\./g, '_fs.');
+    }
+
+    return `https://www.ssactivewear.com/${finalPath}`;
   }
 
   async getCategories(): Promise<SSCategory[]> {
@@ -86,27 +150,23 @@ export class SSActiveWearClient {
   }
 
   async getStyleDetails(styleId: number): Promise<SSStyle[]> {
-     try {
+    if (!this.isConfigured) {
+      throw new Error("API credentials not configured");
+    }
+    try {
+      console.log(`[SSActiveWear] Fetching style details for ${styleId}...`);
       const response = await this.client.get(`/styles/${styleId}`);
       return response.data;
     } catch (error: any) {
-       console.error(`[SSActiveWear] Error fetching style ${styleId}:`, error?.response?.data || error?.message);
+      console.error(`[SSActiveWear] Error fetching style ${styleId}:`, error?.response?.data || error?.message);
       throw error;
     }
   }
 
-  async getInventory(skus: string[]): Promise<SSInventory[]> {
-      try {
-          const skuList = skus.join(",");
-          const response = await this.client.get(`/inventory/${skuList}`);
-          return response.data;
-      } catch (error: any) {
-          console.error("[SSActiveWear] Error fetching inventory:", error?.response?.data || error?.message);
-          throw error;
-      }
-  }
-
-  async getProducts(styleId: number): Promise<any[]> {
+  async getProducts(styleId: number): Promise<SSProduct[]> {
+    if (!this.isConfigured) {
+      throw new Error("API credentials not configured");
+    }
     try {
       console.log(`[SSActiveWear] Fetching products for style ${styleId}...`);
       const response = await this.client.get(`/products?style=${styleId}`);
@@ -118,7 +178,39 @@ export class SSActiveWearClient {
     }
   }
 
+  async getInventoryByStyle(styleId: number): Promise<SSInventory[]> {
+    if (!this.isConfigured) {
+      throw new Error("API credentials not configured");
+    }
+    try {
+      console.log(`[SSActiveWear] Fetching inventory for style ${styleId}...`);
+      const response = await this.client.get(`/inventory?style=${styleId}`);
+      console.log(`[SSActiveWear] Got ${response.data?.length || 0} inventory items`);
+      return response.data;
+    } catch (error: any) {
+      console.error(`[SSActiveWear] Error fetching inventory for style ${styleId}:`, error?.response?.data || error?.message);
+      throw error;
+    }
+  }
+
+  async getInventory(skus: string[]): Promise<SSInventory[]> {
+    if (!this.isConfigured) {
+      throw new Error("API credentials not configured");
+    }
+    try {
+      const skuList = skus.join(",");
+      const response = await this.client.get(`/inventory/${skuList}`);
+      return response.data;
+    } catch (error: any) {
+      console.error("[SSActiveWear] Error fetching inventory:", error?.response?.data || error?.message);
+      throw error;
+    }
+  }
+
   async placeOrder(orderData: any): Promise<any> {
+    if (!this.isConfigured) {
+      throw new Error("API credentials not configured");
+    }
     try {
       const response = await this.client.post("/orders/", orderData);
       return response.data;
