@@ -1,7 +1,69 @@
+import { HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type { LoaderFunctionArgs } from "@remix-run/node";
 
-// Proxy SSActiveWear images through our server
-// This bypasses Cloudflare bot protection by using server-side fetch
+// R2 Configuration
+const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || "";
+const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || "";
+const R2_ENDPOINT = process.env.R2_ENDPOINT || "";
+const R2_BUCKET = process.env.R2_BUCKET || "";
+const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || "";
+
+let r2Client: S3Client | null = null;
+
+function getR2Client(): S3Client | null {
+  if (!R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_ENDPOINT) {
+    return null;
+  }
+
+  if (!r2Client) {
+    r2Client = new S3Client({
+      region: "auto",
+      endpoint: R2_ENDPOINT,
+      credentials: {
+        accessKeyId: R2_ACCESS_KEY_ID,
+        secretAccessKey: R2_SECRET_ACCESS_KEY,
+      },
+    });
+  }
+  return r2Client;
+}
+
+// Convert SSActiveWear path to R2 key
+function pathToR2Key(imagePath: string): string {
+  // e.g., "Images/Style/16_fm.jpg" -> "ssactivewear/style/16_fm.jpg"
+  return `ssactivewear/${imagePath.toLowerCase().replace("images/", "")}`;
+}
+
+// Check if image exists in R2
+async function checkR2Cache(client: S3Client, key: string): Promise<boolean> {
+  try {
+    await client.send(new HeadObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: key,
+    }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Upload image to R2
+async function uploadToR2(client: S3Client, key: string, buffer: ArrayBuffer, contentType: string): Promise<void> {
+  try {
+    await client.send(new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: key,
+      Body: new Uint8Array(buffer),
+      ContentType: contentType,
+      CacheControl: "public, max-age=31536000", // Cache for 1 year
+    }));
+    console.log(`[Image Proxy] Cached to R2: ${key}`);
+  } catch (error) {
+    console.error(`[Image Proxy] Failed to cache to R2:`, error);
+  }
+}
+
+// Proxy SSActiveWear images through our server with R2 caching
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const imagePath = url.searchParams.get("path");
@@ -10,7 +72,21 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return new Response("Missing image path", { status: 400 });
   }
 
-  // Construct the SSActiveWear image URL
+  const r2 = getR2Client();
+  const r2Key = pathToR2Key(imagePath);
+
+  // Check R2 cache first
+  if (r2 && R2_PUBLIC_URL) {
+    const exists = await checkR2Cache(r2, r2Key);
+    if (exists) {
+      // Redirect to R2 public URL
+      const r2Url = `${R2_PUBLIC_URL}/${r2Key}`;
+      console.log(`[Image Proxy] Serving from R2: ${r2Url}`);
+      return Response.redirect(r2Url, 302);
+    }
+  }
+
+  // Fetch from SSActiveWear
   const ssImageUrl = `https://www.ssactivewear.com/${imagePath}`;
 
   try {
@@ -28,17 +104,21 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
     if (!response.ok) {
       console.error(`[Image Proxy] Failed to fetch ${ssImageUrl}: ${response.status}`);
-      // Return a placeholder image
       return Response.redirect("https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png", 302);
     }
 
     const contentType = response.headers.get("content-type") || "image/jpeg";
     const imageBuffer = await response.arrayBuffer();
 
+    // Upload to R2 for future requests (non-blocking)
+    if (r2) {
+      uploadToR2(r2, r2Key, imageBuffer, contentType).catch(() => {});
+    }
+
     return new Response(imageBuffer, {
       headers: {
         "Content-Type": contentType,
-        "Cache-Control": "public, max-age=86400", // Cache for 24 hours
+        "Cache-Control": "public, max-age=86400",
         "Access-Control-Allow-Origin": "*",
       },
     });
