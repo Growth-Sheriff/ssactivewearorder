@@ -25,14 +25,23 @@ export default function App() {
           Dashboard
         </Link>
         <Link to="/app/catalog">Browse Catalog</Link>
-        <Link to="/app/import">Import Products</Link>
-        <Link to="/app/orders">Order Queue</Link>
+        <Link to="/app/favorites">Favorites</Link>
+        <Link to="/app/bulk-import">Bulk Import</Link>
+        <Link to="/app/orders">Orders</Link>
+        <Link to="/app/tracking">Tracking</Link>
+        <Link to="/app/price-rules">Price Rules</Link>
+        <Link to="/app/stock-alerts">Stock Alerts</Link>
+        <Link to="/app/automation">Automation</Link>
+        <Link to="/app/quick-reorder">Quick Reorder</Link>
+        <Link to="/app/reports">Reports</Link>
+        <Link to="/app/sync">Catalog Sync</Link>
         <Link to="/app/settings">Settings</Link>
       </NavMenu>
       <Outlet />
     </AppProvider>
   );
 }
+
 
 // Shopify needs Remix to catch some thrown responses, so that their headers are included in the response.
 export function ErrorBoundary() {

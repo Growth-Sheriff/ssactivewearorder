@@ -110,3 +110,128 @@ model CatalogSyncLog {
   startedAt  DateTime @default(now())
   completedAt DateTime?
 }
+
+// ===== NEW FEATURES =====
+
+// 1. Analytics & Dashboard Stats
+model DailyStats {
+  id             String   @id @default(uuid())
+  shop           String
+  date           DateTime
+  ordersCount    Int      @default(0)
+  itemsSold      Int      @default(0)
+  revenue        Float    @default(0)
+  ssOrdersCount  Int      @default(0)
+  importedCount  Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  @@unique([shop, date])
+}
+
+// 2. Price Markup Rules
+model PriceRule {
+  id              String   @id @default(uuid())
+  shop            String
+  name            String
+  type            String   // percentage, fixed, formula
+  value           Float    // markup percentage or fixed amount
+  applyTo         String   // all, brand, category
+  applyToValue    String?  // brand name or category id if not "all"
+  roundTo         Float    @default(0.99) // round to .99
+  minMargin       Float    @default(0) // minimum margin percentage
+  isActive        Boolean  @default(true)
+  priority        Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// 3. Favorites/Watchlist
+model Favorite {
+  id         String   @id @default(uuid())
+  shop       String
+  styleId    Int
+  partNumber String
+  brandName  String
+  styleName  String
+  styleImage String?
+  notes      String?
+  tags       String?  // comma-separated custom tags
+  createdAt  DateTime @default(now())
+
+  @@unique([shop, styleId])
+}
+
+// 4. Stock Alerts
+model StockAlert {
+  id           String   @id @default(uuid())
+  shop         String
+  sku          String
+  productTitle String
+  variantTitle String
+  threshold    Int      @default(10)
+  currentStock Int      @default(0)
+  lastChecked  DateTime?
+  isTriggered  Boolean  @default(false)
+  notifiedAt   DateTime?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([shop, sku])
+}
+
+// 5. Import Queue for Bulk Import
+model ImportQueue {
+  id         String   @id @default(uuid())
+  shop       String
+  styleId    Int
+  status     String   @default("pending") // pending, processing, completed, failed
+  error      String?
+  priceRuleId String?
+  tags       String?   // tags to apply
+  collection String?   // collection handle to add to
+  createdAt  DateTime @default(now())
+  processedAt DateTime?
+}
+
+// 6. Auto Order Settings
+model AutoOrderSettings {
+  id                  String   @id @default(uuid())
+  shop                String   @unique
+  isEnabled           Boolean  @default(false)
+  autoSubmit          Boolean  @default(false) // auto-submit to SS or require approval
+  defaultShippingMethod String  @default("FXG")
+  notifyEmail         String?
+  minOrderValue       Float    @default(0)
+  excludeTags         String?  // orders with these tags won't auto-process
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+// 7. Shipment Tracking
+model ShipmentTracking {
+  id             String   @id @default(uuid())
+  shop           String
+  orderJobId     String
+  carrier        String?
+  trackingNumber String?
+  trackingUrl    String?
+  status         String   @default("pending") // pending, in_transit, delivered
+  estimatedDelivery DateTime?
+  lastUpdate     DateTime?
+  events         String?  // JSON array of tracking events
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// 8. Quick Reorder Templates
+model ReorderTemplate {
+  id         String   @id @default(uuid())
+  shop       String
+  name       String
+  items      String   // JSON array of {sku, qty}
+  totalItems Int      @default(0)
+  lastUsed   DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
