@@ -115,8 +115,9 @@ export class SSActiveWearClient {
       finalPath = imagePath.replace(/_fm\./g, '_fs.').replace(/_fl\./g, '_fs.');
     }
 
-    // Use proxy to bypass Cloudflare protection
-    return `/api/image-proxy?path=${encodeURIComponent(finalPath)}`;
+    // Use absolute URL for proxy to work within Shopify App Bridge
+    const baseUrl = process.env.SHOPIFY_APP_URL || "https://ssaw-e.techifyboost.com";
+    return `${baseUrl}/api/image-proxy?path=${encodeURIComponent(finalPath)}`;
   }
 
   async getCategories(): Promise<SSCategory[]> {
