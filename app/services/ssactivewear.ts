@@ -101,7 +101,7 @@ export class SSActiveWearClient {
     });
   }
 
-  // Build full image URL from SSActiveWear
+  // Build full image URL from SSActiveWear via proxy
   static buildImageUrl(imagePath: string, size: 'small' | 'medium' | 'large' = 'medium'): string {
     if (!imagePath) return "";
     if (imagePath.startsWith("http")) return imagePath;
@@ -115,7 +115,8 @@ export class SSActiveWearClient {
       finalPath = imagePath.replace(/_fm\./g, '_fs.').replace(/_fl\./g, '_fs.');
     }
 
-    return `https://www.ssactivewear.com/${finalPath}`;
+    // Use proxy to bypass Cloudflare protection
+    return `/api/image-proxy?path=${encodeURIComponent(finalPath)}`;
   }
 
   async getCategories(): Promise<SSCategory[]> {
