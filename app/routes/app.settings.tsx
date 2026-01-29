@@ -1,5 +1,5 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
-import { useActionData, useLoaderData, useSubmit } from "@remix-run/react";
+import { useActionData, useLoaderData, useNavigation, useSubmit } from "@remix-run/react";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import {
     Banner,
@@ -9,14 +9,17 @@ import {
     Card,
     Divider,
     FormLayout,
+    Icon,
     InlineStack,
     Layout,
     Page,
     Select,
     Text,
-    TextField,
+    TextField
 } from "@shopify/polaris";
+import { CheckCircleIcon, XCircleIcon } from "@shopify/polaris-icons";
 import { useCallback, useEffect, useState } from "react";
+import { SSActiveWearClient } from "../services/ssactivewear";
 import { authenticate } from "../shopify.server";
 
 // SSActiveWear shipping methods
@@ -34,39 +37,84 @@ const SS_SHIPPING_METHODS = [
   { label: "FedEx Standard Overnight", value: "23" },
 ];
 
+interface LoaderData {
+  settings: {
+    ssActivewearUser: string;
+    ssActivewearKeyConfigured: boolean;
+    defaultShippingMethod: string;
+    r2BucketUrl: string;
+  };
+  apiStatus: {
+    connected: boolean;
+    message: string;
+    categoryCount?: number;
+  };
+}
+
 export async function loader({ request }: LoaderFunctionArgs) {
   await authenticate.admin(request);
 
-  // Load settings from environment or database
+  const ssUser = process.env.SSACTIVEWEAR_USER || "";
+  const ssKey = process.env.SSACTIVEWEAR_KEY || "";
+
+  // Test API connection
+  let apiStatus = { connected: false, message: "Not configured", categoryCount: 0 };
+
+  if (ssUser && ssKey) {
+    try {
+      const client = new SSActiveWearClient();
+      const categories = await client.getCategories();
+      apiStatus = {
+        connected: true,
+        message: "Connected successfully",
+        categoryCount: Array.isArray(categories) ? categories.length : 0,
+      };
+    } catch (error: any) {
+      apiStatus = {
+        connected: false,
+        message: error?.message || "Connection failed",
+        categoryCount: 0,
+      };
+    }
+  }
+
   const settings = {
-    ssActivewearUser: process.env.SSACTIVEWEAR_USER || "",
-    ssActivewearKey: process.env.SSACTIVEWEAR_KEY ? "••••••••" : "",
+    ssActivewearUser: ssUser,
+    ssActivewearKeyConfigured: !!ssKey,
     defaultShippingMethod: process.env.SS_DEFAULT_SHIPPING || "1",
-    r2BucketUrl: process.env.R2_BUCKET_URL || "https://img-ssa-e.techifyboost.com",
+    r2BucketUrl: process.env.R2_PUBLIC_URL || "https://img-ssa-e.techifyboost.com",
   };
 
-  return json({ settings });
+  return json<LoaderData>({ settings, apiStatus });
 }
 
 export async function action({ request }: ActionFunctionArgs) {
   await authenticate.admin(request);
   const formData = await request.formData();
+  const actionType = formData.get("_action") as string;
 
-  // In production, save these to database or update environment
-  // For now, just acknowledge the save
+  if (actionType === "test_api") {
+    // Test API connection
+    return json({ success: true, message: "API connection test initiated" });
+  }
+
+  // Save settings - in production, save to database
   return json({ success: true, message: "Settings saved successfully" });
 }
 
 export default function SettingsPage() {
-  const { settings } = useLoaderData<typeof loader>();
+  const { settings, apiStatus } = useLoaderData<LoaderData>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
+  const nav = useNavigation();
   const shopify = useAppBridge();
 
   const [ssUser, setSsUser] = useState(settings.ssActivewearUser);
   const [ssKey, setSsKey] = useState("");
   const [defaultShipping, setDefaultShipping] = useState(settings.defaultShippingMethod);
   const [r2Url, setR2Url] = useState(settings.r2BucketUrl);
+
+  const isLoading = nav.state === "loading";
 
   useEffect(() => {
     if (actionData?.success) {
@@ -86,10 +134,52 @@ export default function SettingsPage() {
     );
   }, [ssUser, ssKey, defaultShipping, r2Url, submit]);
 
+  const handleTestApi = useCallback(() => {
+    // Reload the page to re-test API
+    window.location.reload();
+  }, []);
+
   return (
     <Page title="Settings">
       <TitleBar title="App Settings" />
       <BlockStack gap="600">
+        {/* API Status Card */}
+        <Card>
+          <BlockStack gap="400">
+            <InlineStack align="space-between" blockAlign="center">
+              <Text as="h2" variant="headingMd">
+                API Connection Status
+              </Text>
+              <Button onClick={handleTestApi} loading={isLoading} size="slim">
+                Test Connection
+              </Button>
+            </InlineStack>
+            <Divider />
+            <Box
+              background={apiStatus.connected ? "bg-surface-success" : "bg-surface-critical"}
+              padding="400"
+              borderRadius="200"
+            >
+              <InlineStack gap="300" blockAlign="center">
+                <Icon
+                  source={apiStatus.connected ? CheckCircleIcon : XCircleIcon}
+                  tone={apiStatus.connected ? "success" : "critical"}
+                />
+                <BlockStack gap="100">
+                  <Text as="span" variant="bodyMd" fontWeight="semibold">
+                    {apiStatus.connected ? "Connected to SSActiveWear" : "Not Connected"}
+                  </Text>
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    {apiStatus.connected
+                      ? `${apiStatus.categoryCount} categories available`
+                      : apiStatus.message}
+                  </Text>
+                </BlockStack>
+              </InlineStack>
+            </Box>
+          </BlockStack>
+        </Card>
+
         {/* API Credentials */}
         <Card>
           <BlockStack gap="400">
@@ -102,11 +192,12 @@ export default function SettingsPage() {
             <Divider />
             <FormLayout>
               <TextField
-                label="API Username"
+                label="Account Number"
                 value={ssUser}
                 onChange={setSsUser}
                 autoComplete="off"
-                placeholder="Your SSActiveWear user ID"
+                placeholder="e.g. 599024"
+                helpText={settings.ssActivewearUser ? `Current: ${settings.ssActivewearUser}` : "Enter your SSActiveWear account number"}
               />
               <TextField
                 label="API Key"
@@ -114,17 +205,17 @@ export default function SettingsPage() {
                 onChange={setSsKey}
                 type="password"
                 autoComplete="off"
-                placeholder={settings.ssActivewearKey ? "Enter new key to update" : "Your SSActiveWear API key"}
-                helpText={settings.ssActivewearKey ? "A key is already configured" : ""}
+                placeholder={settings.ssActivewearKeyConfigured ? "Enter new key to update" : "Your SSActiveWear API key"}
+                helpText={settings.ssActivewearKeyConfigured ? "✓ API key is configured" : "Enter your API key"}
               />
             </FormLayout>
             <Banner tone="info">
               <p>
-                Get your API credentials from the{" "}
+                Get your API credentials from {" "}
                 <a href="https://www.ssactivewear.com" target="_blank" rel="noopener noreferrer">
                   SSActiveWear website
                 </a>
-                . Contact their support if you don't have API access.
+                {" → My Account → Account Settings. Your account number is your username."}
               </p>
             </Banner>
           </BlockStack>
