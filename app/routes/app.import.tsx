@@ -176,7 +176,7 @@ export default function ImportPage() {
                 >
                   <div style={{ display: "flex", justifyContent: "center" }}>
                     <Thumbnail
-                      source={style?.styleImage || `${R2_IMAGE_BASE}/placeholder.jpg`}
+                      source={style?.styleImage ? SSActiveWearClient.buildImageUrl(style.styleImage, 'medium') : `${R2_IMAGE_BASE}/placeholder.jpg`}
                       alt={style?.title || "Product"}
                       size="large"
                     />
@@ -288,9 +288,7 @@ export default function ImportPage() {
                             </Badge>
                           ))}
                           {colorProducts.length > 6 && (
-                            <Badge size="small" tone="info">
-                              +{colorProducts.length - 6}
-                            </Badge>
+                            <Badge size="small" tone="info">{`+${colorProducts.length - 6}`}</Badge>
                           )}
                         </InlineStack>
                       </InlineStack>

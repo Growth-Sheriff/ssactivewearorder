@@ -104,15 +104,33 @@ export class SSActiveWearClient {
   // Build full image URL from SSActiveWear via proxy
   static buildImageUrl(imagePath: string, size: 'small' | 'medium' | 'large' = 'medium'): string {
     if (!imagePath) return "";
-    if (imagePath.startsWith("http")) return imagePath;
+
+    // Extract path from full SSActiveWear URLs
+    let pathToProxy = imagePath;
+    if (imagePath.startsWith("http")) {
+      // Check if it's an SSActiveWear URL that needs proxying
+      if (imagePath.includes("ssactivewear.com")) {
+        // Extract just the path part
+        try {
+          const urlObj = new URL(imagePath);
+          pathToProxy = urlObj.pathname.startsWith('/') ? urlObj.pathname.substring(1) : urlObj.pathname;
+        } catch {
+          // If parsing fails, try simple extraction
+          pathToProxy = imagePath.replace(/https?:\/\/[^\/]+\/?/, '');
+        }
+      } else {
+        // Non-SSActiveWear URL, return as-is
+        return imagePath;
+      }
+    }
 
     // Replace size suffix based on requested size
     // _fs = small, _fm = medium, _fl = large
-    let finalPath = imagePath;
+    let finalPath = pathToProxy;
     if (size === 'large') {
-      finalPath = imagePath.replace(/_fm\./g, '_fl.').replace(/_fs\./g, '_fl.');
+      finalPath = pathToProxy.replace(/_fm\./g, '_fl.').replace(/_fs\./g, '_fl.');
     } else if (size === 'small') {
-      finalPath = imagePath.replace(/_fm\./g, '_fs.').replace(/_fl\./g, '_fs.');
+      finalPath = pathToProxy.replace(/_fm\./g, '_fs.').replace(/_fl\./g, '_fs.');
     }
 
     // Use absolute URL for proxy to work within Shopify App Bridge
