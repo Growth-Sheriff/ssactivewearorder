@@ -88,16 +88,68 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }),
   ]);
 
-  // Generate mock weekly stats (in production, this would come from DailyStats)
-  const weeklyStats = [];
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  for (let i = 0; i < 7; i++) {
-    weeklyStats.push({
-      day: days[i],
-      orders: Math.floor(Math.random() * 10),
-      revenue: Math.floor(Math.random() * 500),
+  // Get real weekly stats from DailyStats or fallback to OrderJob grouping
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  const dailyStats = await prisma.dailyStats.findMany({
+    where: {
+      shop,
+      date: { gte: sevenDaysAgo },
+    },
+    orderBy: { date: 'asc' },
+  });
+
+  let weeklyStats: Array<{ day: string; orders: number; revenue: number }> = [];
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  if (dailyStats.length > 0) {
+    // Use real DailyStats data
+    weeklyStats = dailyStats.map(ds => ({
+      day: dayNames[new Date(ds.date).getDay()],
+      orders: ds.ordersCount,
+      revenue: ds.revenue,
+    }));
+  } else {
+    // Fallback: Count orders from OrderJob table
+    const recentOrdersForStats = await prisma.orderJob.findMany({
+      where: {
+        shop,
+        createdAt: { gte: sevenDaysAgo },
+      },
+      select: { createdAt: true },
     });
+
+    // Group by day
+    const ordersByDay = new Map<string, number>();
+    recentOrdersForStats.forEach(o => {
+      const day = new Date(o.createdAt).toISOString().split('T')[0];
+      ordersByDay.set(day, (ordersByDay.get(day) || 0) + 1);
+    });
+
+    // Generate last 7 days
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dayKey = date.toISOString().split('T')[0];
+      const ordersCount = ordersByDay.get(dayKey) || 0;
+
+      weeklyStats.push({
+        day: dayNames[date.getDay()],
+        orders: ordersCount,
+        revenue: ordersCount * 85, // Estimated avg order value
+      });
+    }
   }
+
+  // Get real product names from SSStyleCache
+  const styleIds = recentProducts.map(p => parseInt(p.ssStyleId)).filter(id => !isNaN(id));
+  const styleDetails = styleIds.length > 0 ? await prisma.sSStyleCache.findMany({
+    where: { styleId: { in: styleIds } },
+    select: { styleId: true, styleName: true, brandName: true },
+  }) : [];
+
+  const styleMap = new Map(styleDetails.map(s => [s.styleId.toString(), s]));
 
   return json<{ stats: DashboardStats }>({
     stats: {
@@ -107,12 +159,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       totalOrders,
       favoritesCount,
       alertsCount,
-      recentImports: recentProducts.map(p => ({
-        id: p.id,
-        title: `Style ${p.ssStyleId}`,
-        brand: 'SSActiveWear',
-        createdAt: p.createdAt.toISOString()
-      })),
+      recentImports: recentProducts.map(p => {
+        const style = styleMap.get(p.ssStyleId);
+        return {
+          id: p.id,
+          title: style?.styleName || `Style ${p.ssStyleId}`,
+          brand: style?.brandName || 'SSActiveWear',
+          createdAt: p.createdAt.toISOString()
+        };
+      }),
       recentOrders: recentOrderJobs.map(o => ({
         id: o.id,
         orderNumber: o.shopifyOrderNumber || 'N/A',

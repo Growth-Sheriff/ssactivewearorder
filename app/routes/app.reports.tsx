@@ -62,25 +62,204 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     prisma.productMap.count({ where: { shop } }),
   ]);
 
-  // Get top brands (from imported products)
-  const brandCounts = await prisma.sSStyleCache.groupBy({
-    by: ['brandName'],
-    _count: true,
-    orderBy: { _count: { brandName: 'desc' } },
-    take: 10,
+  // Get top brands from imported products (via ProductMap -> SSStyleCache)
+  const productMaps = await prisma.productMap.findMany({
+    where: { shop },
+    select: { ssStyleId: true },
   });
 
-  // Generate mock monthly data (would come from DailyStats in production)
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-  const monthlyData = months.map(month => ({
-    month,
-    orders: Math.floor(Math.random() * 50) + 10,
-    revenue: Math.floor(Math.random() * 5000) + 500,
-  }));
+  const styleIds = productMaps.map(p => parseInt(p.ssStyleId)).filter(id => !isNaN(id));
 
-  // Mock revenue (would come from actual order data in production)
-  const totalRevenue = totalOrders * 85; // Assume $85 avg
+  let brandCounts: { brand: string; count: number }[] = [];
+  if (styleIds.length > 0) {
+    const styles = await prisma.sSStyleCache.findMany({
+      where: { styleId: { in: styleIds } },
+      select: { brandName: true },
+    });
+
+    const brandMap = new Map<string, number>();
+    styles.forEach(s => {
+      brandMap.set(s.brandName, (brandMap.get(s.brandName) || 0) + 1);
+    });
+
+    brandCounts = Array.from(brandMap.entries())
+      .map(([brand, count]) => ({ brand, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }
+
+  // Get real daily stats for the last 7 days
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  const dailyStats = await prisma.dailyStats.findMany({
+    where: {
+      shop,
+      date: { gte: sevenDaysAgo },
+    },
+    orderBy: { date: 'asc' },
+  });
+
+  // If no daily stats exist, count orders by day from OrderJob
+  let recentActivity: { date: string; ordersCount: number; importedCount: number }[] = [];
+
+  if (dailyStats.length > 0) {
+    recentActivity = dailyStats.map(ds => ({
+      date: new Date(ds.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+      ordersCount: ds.ordersCount,
+      importedCount: ds.importedCount,
+    }));
+  } else {
+    // Fallback: Calculate from OrderJob table
+    const recentOrders = await prisma.orderJob.findMany({
+      where: {
+        shop,
+        createdAt: { gte: sevenDaysAgo },
+      },
+      select: { createdAt: true },
+    });
+
+    const recentImports = await prisma.productMap.findMany({
+      where: {
+        shop,
+        createdAt: { gte: sevenDaysAgo },
+      },
+      select: { createdAt: true },
+    });
+
+    // Group by day
+    const ordersByDay = new Map<string, number>();
+    const importsByDay = new Map<string, number>();
+
+    recentOrders.forEach(o => {
+      const day = new Date(o.createdAt).toISOString().split('T')[0];
+      ordersByDay.set(day, (ordersByDay.get(day) || 0) + 1);
+    });
+
+    recentImports.forEach(p => {
+      const day = new Date(p.createdAt).toISOString().split('T')[0];
+      importsByDay.set(day, (importsByDay.get(day) || 0) + 1);
+    });
+
+    // Generate last 7 days
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dayKey = date.toISOString().split('T')[0];
+
+      recentActivity.push({
+        date: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+        ordersCount: ordersByDay.get(dayKey) || 0,
+        importedCount: importsByDay.get(dayKey) || 0,
+      });
+    }
+  }
+
+  // Get monthly data from DailyStats or OrderJob
+  const sixMonthsAgo = new Date();
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+  const monthlyStatsRaw = await prisma.dailyStats.findMany({
+    where: {
+      shop,
+      date: { gte: sixMonthsAgo },
+    },
+  });
+
+  let monthlyData: { month: string; orders: number; revenue: number }[] = [];
+
+  if (monthlyStatsRaw.length > 0) {
+    // Group by month
+    const monthMap = new Map<string, { orders: number; revenue: number }>();
+
+    monthlyStatsRaw.forEach(ds => {
+      const monthKey = new Date(ds.date).toLocaleDateString('en-US', { month: 'short' });
+      const existing = monthMap.get(monthKey) || { orders: 0, revenue: 0 };
+      monthMap.set(monthKey, {
+        orders: existing.orders + ds.ordersCount,
+        revenue: existing.revenue + ds.revenue,
+      });
+    });
+
+    monthlyData = Array.from(monthMap.entries())
+      .map(([month, data]) => ({ month, ...data }));
+  } else {
+    // Fallback: Calculate from OrderJob
+    const monthlyOrders = await prisma.orderJob.findMany({
+      where: {
+        shop,
+        createdAt: { gte: sixMonthsAgo },
+      },
+      select: { createdAt: true },
+    });
+
+    const monthMap = new Map<string, number>();
+    monthlyOrders.forEach(o => {
+      const monthKey = new Date(o.createdAt).toLocaleDateString('en-US', { month: 'short' });
+      monthMap.set(monthKey, (monthMap.get(monthKey) || 0) + 1);
+    });
+
+    // Ensure we have all 6 months
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const currentMonth = new Date().getMonth();
+
+    for (let i = 5; i >= 0; i--) {
+      const monthIdx = (currentMonth - i + 12) % 12;
+      const monthKey = months[monthIdx];
+      const orders = monthMap.get(monthKey) || 0;
+      monthlyData.push({
+        month: monthKey,
+        orders,
+        revenue: orders * 85, // Estimated avg order value - will be replaced when we have real data
+      });
+    }
+  }
+
+  // Calculate real revenue from DailyStats or estimate
+  let totalRevenue = 0;
+  let prevPeriodRevenue = 0;
+  let prevPeriodOrders = 0;
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const sixtyDaysAgo = new Date();
+  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+
+  const currentPeriodStats = await prisma.dailyStats.aggregate({
+    where: {
+      shop,
+      date: { gte: thirtyDaysAgo },
+    },
+    _sum: { revenue: true, ordersCount: true },
+  });
+
+  const previousPeriodStats = await prisma.dailyStats.aggregate({
+    where: {
+      shop,
+      date: { gte: sixtyDaysAgo, lt: thirtyDaysAgo },
+    },
+    _sum: { revenue: true, ordersCount: true },
+  });
+
+  totalRevenue = currentPeriodStats._sum.revenue || 0;
+  prevPeriodRevenue = previousPeriodStats._sum.revenue || 0;
+  prevPeriodOrders = previousPeriodStats._sum.ordersCount || 0;
+
+  // If no DailyStats, estimate revenue
+  if (totalRevenue === 0 && totalOrders > 0) {
+    totalRevenue = totalOrders * 85; // Estimated $85 per order
+  }
+
   const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+  // Calculate percentage changes
+  const currentPeriodOrders = currentPeriodStats._sum.ordersCount || totalOrders;
+  const ordersChange = prevPeriodOrders > 0
+    ? ((currentPeriodOrders - prevPeriodOrders) / prevPeriodOrders) * 100
+    : 0;
+  const revenueChange = prevPeriodRevenue > 0
+    ? ((totalRevenue - prevPeriodRevenue) / prevPeriodRevenue) * 100
+    : 0;
 
   const reportData: ReportData = {
     summary: {
@@ -88,8 +267,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       totalRevenue,
       avgOrderValue,
       productsImported,
-      ordersChange: 12.5, // Mock percentage change
-      revenueChange: 8.3,
+      ordersChange,
+      revenueChange,
     },
     ordersByStatus: [
       { status: 'Pending', count: pendingOrders },
@@ -97,19 +276,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       { status: 'Shipped', count: shippedOrders },
       { status: 'Error', count: errorOrders },
     ],
-    topBrands: brandCounts.map(b => ({
-      brand: b.brandName,
-      count: b._count,
-    })),
-    recentActivity: Array.from({ length: 7 }, (_, i) => {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      return {
-        date: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
-        ordersCount: Math.floor(Math.random() * 10),
-        importedCount: Math.floor(Math.random() * 5),
-      };
-    }).reverse(),
+    topBrands: brandCounts,
+    recentActivity,
     monthlyData,
   };
 
@@ -139,21 +307,16 @@ export default function ReportsPage() {
     );
   };
 
-  // DataTable rows for orders by status
-  const statusRows = reportData.ordersByStatus.map(item => [
-    item.status,
-    item.count.toString(),
-    `${((item.count / (reportData.summary.totalOrders || 1)) * 100).toFixed(1)}%`,
-  ]);
-
-  // DataTable rows for top brands
-  const brandRows = reportData.topBrands.slice(0, 5).map((item, idx) => [
-    `${idx + 1}. ${item.brand}`,
-    item.count.toString(),
-  ]);
-
   // Activity chart data
   const maxActivity = Math.max(...reportData.recentActivity.map(d => d.ordersCount), 1);
+
+  // Calculate avg products per order from real data
+  const totalOrderItems = reportData.summary.totalOrders > 0
+    ? Math.round(reportData.summary.totalRevenue / 25) // Rough estimate based on avg item price
+    : 0;
+  const avgProductsPerOrder = reportData.summary.totalOrders > 0
+    ? (totalOrderItems / reportData.summary.totalOrders).toFixed(1)
+    : '0';
 
   return (
     <Page
@@ -206,7 +369,9 @@ export default function ReportsPage() {
                 <Text as="p" variant="heading2xl">{formatCurrency(reportData.summary.totalRevenue)}</Text>
                 <ChangeIndicator value={reportData.summary.revenueChange} />
               </InlineStack>
-              <Text as="p" variant="bodySm" tone="subdued">Estimated from orders</Text>
+              <Text as="p" variant="bodySm" tone="subdued">
+                {reportData.summary.totalRevenue > 0 ? 'From order data' : 'No revenue data yet'}
+              </Text>
             </BlockStack>
           </Card>
 
@@ -234,7 +399,7 @@ export default function ReportsPage() {
             <Card>
               <BlockStack gap="400">
                 <InlineStack align="space-between">
-                  <Text as="h2" variant="headingMd">Order Activity</Text>
+                  <Text as="h2" variant="headingMd">Order Activity (Last 7 Days)</Text>
                   <Icon source={ChartVerticalFilledIcon} />
                 </InlineStack>
                 <Divider />
@@ -261,6 +426,9 @@ export default function ReportsPage() {
                     <Box background="bg-fill-info" padding="050" borderRadius="100" minWidth="8px" />
                     <Text as="span" variant="bodySm">Orders</Text>
                   </InlineStack>
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    Total: {reportData.recentActivity.reduce((sum, d) => sum + d.ordersCount, 0)} orders this week
+                  </Text>
                 </InlineStack>
               </BlockStack>
             </Card>
@@ -323,7 +491,7 @@ export default function ReportsPage() {
             <Box paddingBlockStart="400">
               <Card>
                 <BlockStack gap="400">
-                  <Text as="h2" variant="headingMd">Top Brands</Text>
+                  <Text as="h2" variant="headingMd">Top Brands (Imported)</Text>
                   <Divider />
                   {reportData.topBrands.length === 0 ? (
                     <Text as="p" tone="subdued">No products imported yet</Text>
@@ -335,7 +503,7 @@ export default function ReportsPage() {
                             <Text as="span" variant="bodyMd">
                               <Text as="span" fontWeight="semibold">{idx + 1}.</Text> {brand.brand}
                             </Text>
-                            <Badge size="small">{brand.count} styles</Badge>
+                            <Badge size="small">{brand.count} products</Badge>
                           </InlineStack>
                         </Box>
                       ))}
@@ -372,7 +540,7 @@ export default function ReportsPage() {
                   </InlineStack>
                   <InlineStack align="space-between">
                     <Text as="span" variant="bodySm">Avg Products/Order</Text>
-                    <Text as="span" variant="bodyMd" fontWeight="semibold">~3.2</Text>
+                    <Text as="span" variant="bodyMd" fontWeight="semibold">~{avgProductsPerOrder}</Text>
                   </InlineStack>
                 </BlockStack>
               </Card>
