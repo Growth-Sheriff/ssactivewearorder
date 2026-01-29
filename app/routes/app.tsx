@@ -30,11 +30,20 @@ export default function App() {
         <Link to="/app/orders">Orders</Link>
         <Link to="/app/tracking">Tracking</Link>
         <Link to="/app/price-rules">Price Rules</Link>
+        <Link to="/app/bulk-price">Bulk Price Update</Link>
         <Link to="/app/stock-alerts">Stock Alerts</Link>
+        <Link to="/app/inventory-sync">Inventory Sync</Link>
         <Link to="/app/automation">Automation</Link>
         <Link to="/app/quick-reorder">Quick Reorder</Link>
         <Link to="/app/reports">Reports</Link>
         <Link to="/app/sync">Catalog Sync</Link>
+        <Link to="/app/scheduled-jobs">Scheduled Jobs</Link>
+        <Link to="/app/webhook-logs">Webhook Logs</Link>
+        <Link to="/app/rate-limits">API Rate Limits</Link>
+        <Link to="/app/activity-log">Activity Log</Link>
+        <Link to="/app/staff">Staff & Roles</Link>
+        <Link to="/app/export">Backup/Export</Link>
+        <Link to="/app/size-charts">Size Charts</Link>
         <Link to="/app/settings">Settings</Link>
       </NavMenu>
       <Outlet />

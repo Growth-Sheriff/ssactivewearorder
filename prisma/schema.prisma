@@ -235,3 +235,168 @@ model ReorderTemplate {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
+
+// ===== OPERATIONAL FEATURES =====
+
+// 9. Webhook Logs
+model WebhookLog {
+  id           String   @id @default(uuid())
+  shop         String
+  topic        String   // orders/create, products/update, etc
+  direction    String   // incoming, outgoing
+  endpoint     String?  // URL called or received from
+  method       String   @default("POST")
+  requestBody  String?  // JSON
+  responseBody String?  // JSON
+  statusCode   Int?
+  duration     Int?     // ms
+  success      Boolean  @default(true)
+  errorMessage String?
+  createdAt    DateTime @default(now())
+
+  @@index([shop, createdAt])
+  @@index([topic])
+}
+
+// 10. API Rate Limit Tracking
+model ApiRateLimit {
+  id            String   @id @default(uuid())
+  shop          String
+  apiName       String   // ssactivewear, shopify
+  endpoint      String   // /products, /orders
+  requestCount  Int      @default(0)
+  limitMax      Int      @default(100)
+  windowStart   DateTime
+  windowEnd     DateTime
+  lastRequest   DateTime?
+  isThrottled   Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([shop, apiName, endpoint, windowStart])
+  @@index([shop, apiName])
+}
+
+// 11. Scheduled Sync Jobs
+model ScheduledJob {
+  id            String   @id @default(uuid())
+  shop          String
+  jobType       String   // catalog_sync, inventory_sync, price_update
+  schedule      String   // cron expression or 'hourly', 'daily', 'weekly'
+  isEnabled     Boolean  @default(true)
+  lastRunAt     DateTime?
+  nextRunAt     DateTime?
+  lastStatus    String?  // success, failed, running
+  lastError     String?
+  runCount      Int      @default(0)
+  config        String?  // JSON configuration
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([shop, jobType])
+}
+
+// 12. Activity Log (Audit Trail)
+model ActivityLog {
+  id          String   @id @default(uuid())
+  shop        String
+  userId      String?  // staff member ID if applicable
+  userEmail   String?
+  action      String   // product_imported, order_submitted, settings_changed
+  resource    String   // product, order, setting
+  resourceId  String?
+  details     String?  // JSON with additional context
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([shop, createdAt])
+  @@index([action])
+  @@index([resourceId])
+}
+
+// 13. User Roles & Staff
+model StaffMember {
+  id          String   @id @default(uuid())
+  shop        String
+  email       String
+  name        String?
+  role        String   @default("viewer") // admin, manager, viewer
+  permissions String?  // JSON array of specific permissions
+  isActive    Boolean  @default(true)
+  lastLogin   DateTime?
+  invitedAt   DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([shop, email])
+}
+
+// ===== CUSTOMER FEATURES =====
+
+// 14. Stock Notifications (Notify when back in stock)
+model StockNotification {
+  id          String   @id @default(uuid())
+  shop        String
+  email       String
+  sku         String
+  productId   String?  // Shopify product ID
+  variantId   String?  // Shopify variant ID
+  styleId     Int?     // SS style ID
+  styleName   String?
+  colorName   String?
+  sizeName    String?
+  isNotified  Boolean  @default(false)
+  notifiedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([shop, sku])
+  @@index([email])
+}
+
+// 15. Inventory Sync Log
+model InventorySyncLog {
+  id            String   @id @default(uuid())
+  shop          String
+  syncType      String   // full, incremental
+  status        String   // running, completed, failed
+  productsTotal Int      @default(0)
+  productsUpdated Int    @default(0)
+  productsFailed Int     @default(0)
+  errors        String?  // JSON array of errors
+  startedAt     DateTime @default(now())
+  completedAt   DateTime?
+}
+
+// 16. Size Charts
+model SizeChart {
+  id          String   @id @default(uuid())
+  brand       String   // Brand name
+  category    String?  // Shirt, Pants, etc
+  chartData   String   // JSON with size measurements
+  unit        String   @default("inches") // inches, cm
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([brand, category])
+}
+
+// 17. Customer Order Tracking (public tracking page data)
+model CustomerTracking {
+  id              String   @id @default(uuid())
+  shop            String
+  shopifyOrderId  String
+  orderNumber     String
+  customerEmail   String
+  trackingToken   String   @unique // unique token for public access
+  carrier         String?
+  trackingNumber  String?
+  status          String   @default("processing") // processing, shipped, in_transit, delivered
+  events          String?  // JSON array of tracking events
+  estimatedDelivery DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([shop, shopifyOrderId])
+  @@index([customerEmail])
+}
