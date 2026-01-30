@@ -5,99 +5,64 @@ const ssClient = new SSActiveWearClient();
 
 export class ImporterService {
   async importStyle(admin: any, styleId: number) {
+    console.log(`[Importer] Starting import for style ${styleId}...`);
+
     // 1. Fetch full details from SSActiveWear
     const styleDetails = await ssClient.getStyleDetails(styleId);
     if (!styleDetails || styleDetails.length === 0) {
       throw new Error(`Style ${styleId} not found`);
     }
     const style = styleDetails[0];
+    console.log(`[Importer] Found style: ${style.title}`);
 
     // 2. Fetch ALL products (variants) for this style
     const products = await ssClient.getProducts(styleId);
     if (!products || products.length === 0) {
       throw new Error(`No products found for style ${styleId}`);
     }
+    console.log(`[Importer] Found ${products.length} variants`);
 
-    console.log(`[Importer] Found ${products.length} variants for style ${styleId}`);
-
-    // 3. Group products by color to create proper variants
-    const colorMap = new Map<string, typeof products>();
-    const allSizes = new Set<string>();
-
+    // 3. Get unique colors and their images
+    const colorImages = new Map<string, { color: string; image: string }>();
     products.forEach((product) => {
-      const colorKey = product.colorCode;
-      if (!colorMap.has(colorKey)) {
-        colorMap.set(colorKey, []);
-      }
-      colorMap.get(colorKey)!.push(product);
-      allSizes.add(product.sizeName);
-    });
-
-    const colors = Array.from(colorMap.keys());
-    const sizes = Array.from(allSizes);
-
-    console.log(`[Importer] Colors: ${colors.length}, Sizes: ${sizes.length}`);
-
-    // 4. Prepare media (images) from first product of each color
-    const mediaInputs: any[] = [];
-    const colorToMediaMap = new Map<string, number>();
-
-    colorMap.forEach((colorProducts, colorCode) => {
-      const firstProduct = colorProducts[0];
-      // Use the best quality image available
-      const imageUrl = firstProduct.colorFrontImage ||
-                       firstProduct.colorOnModelFrontImage ||
-                       firstProduct.colorSwatchImage;
-
-      if (imageUrl) {
-        const mediaIndex = mediaInputs.length;
-        colorToMediaMap.set(colorCode, mediaIndex);
-        mediaInputs.push({
-          alt: `${firstProduct.colorName}`,
-          mediaContentType: "IMAGE",
-          originalSource: imageUrl,
+      if (!colorImages.has(product.colorCode)) {
+        const imageUrl = this.getFullImageUrl(
+          product.colorFrontImage ||
+          product.colorOnModelFrontImage ||
+          product.colorSwatchImage
+        );
+        colorImages.set(product.colorCode, {
+          color: product.colorName,
+          image: imageUrl,
         });
       }
     });
+    console.log(`[Importer] Found ${colorImages.size} unique colors`);
 
-    // 5. Create variants array for Shopify
-    const variantsInputs = products.map((product) => {
-      // Calculate total stock from all warehouses
-      const totalQty = product.warehouses?.reduce((sum, w) => sum + (w.qty || 0), 0) || product.qty || 0;
+    // 4. Build variants for Shopify (limit to 100 due to API limits)
+    const limitedProducts = products.slice(0, 100);
+    const variants = limitedProducts.map((product) => ({
+      sku: product.sku,
+      price: String(product.piecePrice || 0),
+      options: [product.colorName, product.sizeName],
+    }));
 
-      return {
-        optionValues: [
-          { name: product.colorName, optionName: "Color" },
-          { name: product.sizeName, optionName: "Size" },
-        ],
-        sku: product.sku,
-        price: String(product.piecePrice || 0),
-        inventoryQuantities: [{
-          availableQuantity: totalQty,
-          locationId: "gid://shopify/Location/current", // Will use default location
-        }],
-        mediaId: colorToMediaMap.has(product.colorCode)
-          ? `MEDIA_${colorToMediaMap.get(product.colorCode)}`
-          : undefined,
-      };
-    });
+    // 5. Get main product image
+    const mainImage = this.getFullImageUrl(style.styleImage);
 
-    // 6. Create Product with Variants using productSet mutation (newer API)
+    // 6. Create Product in Shopify - simple approach
     const createProductMutation = `
-      mutation productCreate($input: ProductInput!, $media: [CreateMediaInput!]) {
-        productCreate(input: $input, media: $media) {
+      mutation productCreate($input: ProductInput!) {
+        productCreate(input: $input) {
           product {
             id
             handle
-            variants(first: 250) {
+            title
+            variants(first: 100) {
               edges {
                 node {
                   id
                   sku
-                  selectedOptions {
-                    name
-                    value
-                  }
                 }
               }
             }
@@ -110,37 +75,30 @@ export class ImporterService {
       }
     `;
 
-    // Build product input
-    const productInput = {
+    const productInput: any = {
       title: style.title,
-      descriptionHtml: style.description,
+      descriptionHtml: style.description || "",
       vendor: style.brandName,
       productType: style.baseCategory,
       status: "ACTIVE",
-      tags: [style.baseCategory, "SSActiveWear", `ss-style-${styleId}`],
+      tags: [style.baseCategory || "Apparel", "SSActiveWear", `ss-style-${styleId}`],
       options: ["Color", "Size"],
-      variants: products.slice(0, 100).map((product) => {
-        const totalQty = product.warehouses?.reduce((sum, w) => sum + (w.qty || 0), 0) || product.qty || 0;
-        return {
-          sku: product.sku,
-          price: String(product.piecePrice || 0),
-          options: [product.colorName, product.sizeName],
-          inventoryPolicy: "DENY",
-          inventoryManagement: "SHOPIFY",
-        };
-      }),
+      variants: variants,
     };
 
-    console.log(`[Importer] Creating product with ${productInput.variants.length} variants...`);
+    console.log(`[Importer] Creating product with ${variants.length} variants...`);
 
     try {
       const response = await admin.graphql(createProductMutation, {
-        variables: {
-          input: productInput,
-          media: mediaInputs.length > 0 ? mediaInputs : null,
-        },
+        variables: { input: productInput },
       });
       const responseJson = await response.json();
+
+      // Check for errors
+      if (responseJson.errors) {
+        console.error("[Importer] GraphQL errors:", responseJson.errors);
+        throw new Error(JSON.stringify(responseJson.errors));
+      }
 
       if (responseJson.data?.productCreate?.userErrors?.length > 0) {
         console.error("[Importer] User errors:", responseJson.data.productCreate.userErrors);
@@ -154,7 +112,10 @@ export class ImporterService {
 
       console.log(`[Importer] Product created: ${shopifyProduct.id}`);
 
-      // 7. Save Mapping to DB
+      // 7. Add product images
+      await this.addProductImages(admin, shopifyProduct.id, mainImage, colorImages);
+
+      // 8. Save Mapping to DB
       const productMap = await prisma.productMap.create({
         data: {
           shopifyProductId: shopifyProduct.id,
@@ -162,84 +123,113 @@ export class ImporterService {
         },
       });
 
-      // 8. Update inventory for each variant
-      const variants = shopifyProduct.variants?.edges || [];
-      console.log(`[Importer] Updating inventory for ${variants.length} variants...`);
-
-      for (const { node: variant } of variants) {
-        const matchingProduct = products.find(p => p.sku === variant.sku);
-        if (matchingProduct) {
-          const totalQty = matchingProduct.warehouses?.reduce((sum, w) => sum + (w.qty || 0), 0) || matchingProduct.qty || 0;
-
-          // We'll set inventory later via inventory API if needed
-          // For now, log what we would set
-          console.log(`[Importer] Variant ${variant.sku}: ${totalQty} units`);
-        }
-      }
+      const variantCount = shopifyProduct.variants?.edges?.length || variants.length;
+      console.log(`[Importer] Import complete! Created ${variantCount} variants`);
 
       return {
         productMap,
         shopifyProduct,
-        variantCount: variants.length,
-        message: `Successfully imported ${style.title} with ${variants.length} variants`,
+        variantCount,
+        message: `Successfully imported ${style.title} with ${variantCount} variants`,
       };
 
     } catch (error: any) {
-      console.error("[Importer] Error creating product:", error);
+      console.error("[Importer] Error creating product:", error.message || error);
       throw error;
     }
   }
 
-  // Update variant images after product creation
-  async updateVariantImages(admin: any, productId: string, styleId: number) {
-    const products = await ssClient.getProducts(styleId);
+  // Get full SSActiveWear image URL
+  private getFullImageUrl(imagePath: string | undefined): string {
+    if (!imagePath) return "";
 
-    // Group by color and get first product's image for each color
-    const colorImages = new Map<string, string>();
-    products.forEach(product => {
-      if (!colorImages.has(product.colorCode)) {
-        const imageUrl = product.colorFrontImage || product.colorOnModelFrontImage;
-        if (imageUrl) {
-          colorImages.set(product.colorCode, imageUrl);
-        }
+    // If already a full URL, return as-is
+    if (imagePath.startsWith("http")) {
+      return imagePath;
+    }
+
+    // Build full SSActiveWear URL
+    return `https://www.ssactivewear.com/${imagePath}`;
+  }
+
+  // Add images to the product
+  private async addProductImages(
+    admin: any,
+    productId: string,
+    mainImage: string,
+    colorImages: Map<string, { color: string; image: string }>
+  ) {
+    if (!mainImage && colorImages.size === 0) {
+      console.log("[Importer] No images to add");
+      return;
+    }
+
+    const mediaInputs: any[] = [];
+
+    // Add main image first
+    if (mainImage) {
+      mediaInputs.push({
+        alt: "Main product image",
+        mediaContentType: "IMAGE",
+        originalSource: mainImage,
+      });
+    }
+
+    // Add color images (limit to prevent timeout)
+    let count = 0;
+    for (const [_, colorData] of colorImages) {
+      if (count >= 10) break; // Limit to 10 color images
+      if (colorData.image && colorData.image !== mainImage) {
+        mediaInputs.push({
+          alt: colorData.color,
+          mediaContentType: "IMAGE",
+          originalSource: colorData.image,
+        });
+        count++;
       }
-    });
+    }
 
-    console.log(`[Importer] Found ${colorImages.size} color images to upload`);
+    if (mediaInputs.length === 0) {
+      console.log("[Importer] No valid images to add");
+      return;
+    }
 
-    // Upload images to product
-    for (const [colorCode, imageUrl] of colorImages) {
-      try {
-        const uploadMutation = `
-          mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
-            productCreateMedia(productId: $productId, media: $media) {
-              media {
-                ... on MediaImage {
-                  id
-                  alt
-                }
-              }
-              mediaUserErrors {
-                field
-                message
-              }
+    console.log(`[Importer] Adding ${mediaInputs.length} images...`);
+
+    const addMediaMutation = `
+      mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+        productCreateMedia(productId: $productId, media: $media) {
+          media {
+            ... on MediaImage {
+              id
+              alt
             }
           }
-        `;
-
-        await admin.graphql(uploadMutation, {
-          variables: {
-            productId,
-            media: [{
-              alt: colorCode,
-              mediaContentType: "IMAGE",
-              originalSource: imageUrl,
-            }],
-          },
-        });
-      } catch (error) {
-        console.error(`[Importer] Failed to upload image for color ${colorCode}:`, error);
+          mediaUserErrors {
+            field
+            message
+          }
+        }
       }
+    `;
+
+    try {
+      const response = await admin.graphql(addMediaMutation, {
+        variables: {
+          productId,
+          media: mediaInputs,
+        },
+      });
+      const responseJson = await response.json();
+
+      if (responseJson.data?.productCreateMedia?.mediaUserErrors?.length > 0) {
+        console.warn("[Importer] Media errors:", responseJson.data.productCreateMedia.mediaUserErrors);
+      } else {
+        console.log(`[Importer] Successfully added ${mediaInputs.length} images`);
+      }
+    } catch (error) {
+      console.error("[Importer] Failed to add images:", error);
+      // Don't throw - images are optional
     }
   }
 }

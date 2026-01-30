@@ -124,6 +124,18 @@ export class SSActiveWearClient {
       }
     }
 
+    // SSActiveWear images need 'Images/' prefix if not present
+    // Common paths: Images/Products/..., Images/Style/..., Images/Color/...
+    if (!pathToProxy.toLowerCase().startsWith('images/')) {
+      // Try to determine the correct prefix based on filename pattern
+      if (pathToProxy.includes('_fm') || pathToProxy.includes('_fl') || pathToProxy.includes('_fs')) {
+        // These are typically product color images
+        pathToProxy = `Images/Products/${pathToProxy}`;
+      } else {
+        pathToProxy = `Images/${pathToProxy}`;
+      }
+    }
+
     // Replace size suffix based on requested size
     // _fs = small, _fm = medium, _fl = large
     let finalPath = pathToProxy;
@@ -133,9 +145,8 @@ export class SSActiveWearClient {
       finalPath = pathToProxy.replace(/_fm\./g, '_fs.').replace(/_fl\./g, '_fs.');
     }
 
-    // Use absolute URL for proxy to work within Shopify App Bridge
-    const baseUrl = process.env.SHOPIFY_APP_URL || "https://ssaw-e.techifyboost.com";
-    return `${baseUrl}/api/image-proxy?path=${encodeURIComponent(finalPath)}`;
+    // Use absolute URL for proxy - hardcoded to ensure it works
+    return `https://ssaw-e.techifyboost.com/api/image-proxy?path=${encodeURIComponent(finalPath)}`;
   }
 
   async getCategories(): Promise<SSCategory[]> {
