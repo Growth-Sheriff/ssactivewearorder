@@ -147,13 +147,31 @@ export class ImporterService {
     const uniqueColors = Array.from(colorMap.values());
     const uniqueSizes = sortedSizes.map(([, original]) => original);
 
-    // Normalize products
-    const normalizedProducts = products.slice(0, MAX_VARIANTS).map(p => ({
-      ...p,
-      normalizedColor: p.colorName.trim(),
-      normalizedSize: p.sizeName.trim(),
-      totalStock: p.warehouses?.reduce((s, w) => s + (w.qty || 0), 0) || p.qty || 0,
-    }));
+    // Create lookup maps for consistent option values
+    // KEY: normalized (lowercase) -> VALUE: consistent display value
+    const colorLookup = new Map<string, string>();
+    colorMap.forEach((displayValue, normalizedKey) => {
+      colorLookup.set(normalizedKey, displayValue);
+    });
+
+    const sizeLookup = new Map<string, string>();
+    sizeMap.forEach((displayValue, normalizedKey) => {
+      sizeLookup.set(normalizedKey, displayValue);
+    });
+
+    // Normalize products - USE THE SAME VALUES AS OPTIONS
+    const normalizedProducts = products.slice(0, MAX_VARIANTS).map(p => {
+      const colorKey = this.normalize(p.colorName);
+      const sizeKey = this.normalize(p.sizeName);
+
+      return {
+        ...p,
+        // Use colorMap value for consistency with options!
+        normalizedColor: colorLookup.get(colorKey) || p.colorName.trim(),
+        normalizedSize: sizeLookup.get(sizeKey) || p.sizeName.trim(),
+        totalStock: p.warehouses?.reduce((s, w) => s + (w.qty || 0), 0) || p.qty || 0,
+      };
+    });
 
     return { normalizedProducts, uniqueColors, uniqueSizes, colorImages };
   }
@@ -358,6 +376,15 @@ export class ImporterService {
           { optionName: "Size", name: p.normalizedSize },
         ],
       }));
+
+      // Debug: Log first batch to verify option values match
+      if (batchNum === 1) {
+        console.log(`[DEBUG] First 3 variants:`, variants.slice(0, 3).map(v => ({
+          sku: v.sku,
+          color: v.optionValues[0].name,
+          size: v.optionValues[1].name,
+        })));
+      }
 
       try {
         const response = await admin.graphql(mutation, {
