@@ -159,6 +159,7 @@ export class ImporterService {
       ],
     }));
 
+    // Use ASYNCHRONOUS mode to avoid timeout!
     const response = await admin.graphql(`
       mutation productSet($input: ProductSetInput!, $synchronous: Boolean!) {
         productSet(synchronous: $synchronous, input: $input) {
@@ -166,12 +167,16 @@ export class ImporterService {
             id
             variantsCount { count }
           }
+          productSetOperation {
+            id
+            status
+          }
           userErrors { field message code }
         }
       }
     `, {
       variables: {
-        synchronous: true,
+        synchronous: false,  // ASYNC MODE - prevents timeout!
         input: {
           title: style.title,
           descriptionHtml: this.buildDescription(style, products),
@@ -191,20 +196,79 @@ export class ImporterService {
     const json = await response.json();
 
     if (json.errors?.length) {
+      console.log(`[Importer] GraphQL errors:`, JSON.stringify(json.errors).slice(0, 500));
       throw new Error(`productSet GraphQL error: ${json.errors[0].message}`);
     }
 
     if (json.data?.productSet?.userErrors?.length > 0) {
+      console.log(`[Importer] userErrors:`, JSON.stringify(json.data.productSet.userErrors));
       throw new Error(`productSet error: ${json.data.productSet.userErrors[0].message}`);
     }
 
-    const productId = json.data?.productSet?.product?.id;
-    if (!productId) throw new Error("No product ID returned");
+    // If synchronous result available (small product)
+    if (json.data?.productSet?.product?.id) {
+      const productId = json.data.productSet.product.id;
+      const createdCount = json.data.productSet.product.variantsCount?.count || products.length;
+      return { productId, createdCount };
+    }
 
-    // Get actual created variant count from API response
-    const createdCount = json.data?.productSet?.product?.variantsCount?.count || products.length;
+    // ASYNC: Poll for operation completion
+    const operationId = json.data?.productSet?.productSetOperation?.id;
+    if (!operationId) {
+      throw new Error("No product ID or operation ID returned");
+    }
 
-    return { productId, createdCount };
+    console.log(`[Importer] Async operation started: ${operationId}`);
+
+    // Poll until complete (max 5 minutes)
+    const maxAttempts = 60;  // 60 * 5 seconds = 5 minutes
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await this.delay(5000);  // Wait 5 seconds between polls
+
+      const statusResponse = await admin.graphql(`
+        query productOperation($id: ID!) {
+          productOperation(id: $id) {
+            ... on ProductSetOperation {
+              id
+              status
+              product {
+                id
+                variantsCount { count }
+              }
+              userErrors { field message code }
+            }
+          }
+        }
+      `, { variables: { id: operationId } });
+
+      const statusJson = await statusResponse.json();
+      const operation = statusJson.data?.productOperation;
+
+      if (!operation) {
+        console.log(`[Importer] Poll ${attempt + 1}: No operation data`);
+        continue;
+      }
+
+      console.log(`[Importer] Poll ${attempt + 1}: status=${operation.status}`);
+
+      if (operation.status === "COMPLETE") {
+        if (operation.userErrors?.length > 0) {
+          throw new Error(`productSet operation failed: ${operation.userErrors[0].message}`);
+        }
+        const productId = operation.product?.id;
+        if (!productId) throw new Error("Operation complete but no product ID");
+        const createdCount = operation.product?.variantsCount?.count || products.length;
+        return { productId, createdCount };
+      }
+
+      if (operation.status === "FAILED") {
+        throw new Error(`productSet operation failed: ${operation.userErrors?.[0]?.message || 'Unknown error'}`);
+      }
+
+      // CREATED or RUNNING - continue polling
+    }
+
+    throw new Error("productSet operation timed out after 5 minutes");
   }
 
   private async addRemainingVariants(admin: any, productId: string, products: any[]): Promise<number> {
