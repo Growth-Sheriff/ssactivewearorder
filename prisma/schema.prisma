@@ -400,3 +400,12 @@ model CustomerTracking {
   @@index([shop, shopifyOrderId])
   @@index([customerEmail])
 }
+
+// 18. Quick Reorder Cart
+model ReorderCart {
+  id        String   @id @default(uuid())
+  shop      String   @unique
+  items     String   // JSON array of cart items
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
