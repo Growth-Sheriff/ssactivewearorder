@@ -2,9 +2,9 @@ import prisma from "../db.server";
 import { SSActiveWearClient, type SSProduct } from "./ssactivewear";
 
 const ssClient = new SSActiveWearClient();
-const VARIANT_BATCH_SIZE = 50;
 const MAX_VARIANTS = 2000;
 const MAX_IMAGES = 50;
+const BATCH_SIZE = 50;
 
 interface ImportResult {
   productMap: any;
@@ -16,106 +16,283 @@ interface ImportResult {
 
 export class ImporterService {
   async importStyle(admin: any, styleId: number): Promise<ImportResult> {
-    console.log(`[Importer] ========================================`);
+    console.log(`\n[Importer] ========================================`);
     console.log(`[Importer] Starting import for style ${styleId}`);
+    console.log(`[Importer] ========================================\n`);
 
     // 1. Fetch style details
     const styleDetails = await ssClient.getStyleDetails(styleId);
-    if (!styleDetails || styleDetails.length === 0) {
+    if (!styleDetails?.length) {
       throw new Error(`Style ${styleId} not found`);
     }
     const style = styleDetails[0];
-    console.log(`[Importer] Style: ${style.title}`);
+    console.log(`[Importer] Style: "${style.title}" by ${style.brandName}`);
 
     // 2. Fetch all products (variants)
     const products = await ssClient.getProducts(styleId);
-    if (!products || products.length === 0) {
+    if (!products?.length) {
       throw new Error(`No products found for style ${styleId}`);
     }
-    console.log(`[Importer] Total SKUs: ${products.length}`);
+    console.log(`[Importer] Total SKUs from API: ${products.length}`);
 
-    // Log sample product data
-    if (products.length > 0) {
-      const sample = products[0];
-      console.log(`[Importer] Sample SKU: ${sample.sku}`);
-      console.log(`[Importer] Sample Color: ${sample.colorName}`);
-      console.log(`[Importer] Sample Size: ${sample.sizeName}`);
-      console.log(`[Importer] Sample Price: ${sample.piecePrice}`);
-      console.log(`[Importer] Sample Stock: ${sample.warehouses?.reduce((s, w) => s + w.qty, 0) || sample.qty || 0}`);
+    // 3. Log sample data for debugging
+    this.logSampleData(products);
+
+    // 4. Extract and normalize data
+    const { colors, sizes, colorImages, normalizedProducts } = this.prepareData(products);
+    console.log(`[Importer] Unique Colors: ${colors.length}`);
+    console.log(`[Importer] Unique Sizes: ${sizes.length}`);
+    console.log(`[Importer] Expected Variants: ${normalizedProducts.length}`);
+
+    // 5. Create product using productSet (single atomic operation)
+    const result = await this.createProductWithProductSet(
+      admin,
+      style,
+      colors,
+      sizes,
+      normalizedProducts.slice(0, MAX_VARIANTS)
+    );
+
+    if (!result.productId) {
+      throw new Error("Product creation failed");
     }
 
-    // 3. Extract unique colors and sizes
-    const colors = [...new Set(products.map(p => p.colorName).filter(Boolean))];
-    const sizes = this.sortSizes([...new Set(products.map(p => p.sizeName).filter(Boolean))]);
-    console.log(`[Importer] Colors: ${colors.length} - ${colors.slice(0, 5).join(', ')}...`);
-    console.log(`[Importer] Sizes: ${sizes.length} - ${sizes.join(', ')}`);
+    console.log(`[Importer] Product created: ${result.productId}`);
+    console.log(`[Importer] Variants created: ${result.variantCount}`);
 
-    // 4. Collect color images
-    const colorImages = new Map<string, string[]>();
-    products.forEach(p => {
-      if (!colorImages.has(p.colorCode)) {
-        const imgs: string[] = [];
-        if (p.colorFrontImage) imgs.push(this.fullUrl(p.colorFrontImage));
-        if (p.colorBackImage) imgs.push(this.fullUrl(p.colorBackImage));
-        if (p.colorOnModelFrontImage) imgs.push(this.fullUrl(p.colorOnModelFrontImage));
-        colorImages.set(p.colorCode, imgs);
-      }
-    });
-
-    // 5. Create product with options using productCreate
-    const product = await this.createProductWithOptions(admin, style, colors, sizes, products);
-    console.log(`[Importer] Product created: ${product.id}`);
-
-    // 6. Create variants
-    const variantCount = await this.createAllVariants(admin, product.id, products);
-    console.log(`[Importer] Variants created: ${variantCount}`);
-
-    // 7. Add images
-    const imageCount = await this.uploadImages(admin, product.id, style, colorImages);
+    // 6. Add images
+    const imageCount = await this.addImages(admin, result.productId, style, colorImages);
     console.log(`[Importer] Images added: ${imageCount}`);
 
-    // 8. Update inventory
-    await this.syncInventory(admin, product.id, products);
+    // 7. Update inventory
+    await this.updateInventory(admin, result.productId, normalizedProducts);
 
-    // 9. Publish
-    await this.activateProduct(admin, product.id);
+    // 8. Publish product
+    await this.publishProduct(admin, result.productId);
 
-    // 10. Save to DB
+    // 9. Save to database
     const productMap = await prisma.productMap.create({
       data: {
-        shopifyProductId: product.id,
+        shopifyProductId: result.productId,
         ssStyleId: String(style.styleID),
       },
     });
 
-    console.log(`[Importer] ✅ Complete: ${variantCount} variants, ${imageCount} images`);
+    console.log(`\n[Importer] ========================================`);
+    console.log(`[Importer] ✅ IMPORT COMPLETE`);
+    console.log(`[Importer] Product: ${style.title}`);
+    console.log(`[Importer] Variants: ${result.variantCount}`);
+    console.log(`[Importer] Images: ${imageCount}`);
+    console.log(`[Importer] ========================================\n`);
 
     return {
       productMap,
-      shopifyProduct: product,
-      variantCount,
+      shopifyProduct: { id: result.productId },
+      variantCount: result.variantCount,
       imageCount,
-      message: `Imported ${style.title}: ${variantCount} variants, ${imageCount} images`,
+      message: `Imported "${style.title}" with ${result.variantCount} variants`,
     };
   }
 
-  private async createProductWithOptions(
+  private logSampleData(products: SSProduct[]) {
+    const sample = products[0];
+    console.log(`[Importer] --- Sample Product Data ---`);
+    console.log(`[Importer] SKU: ${sample.sku}`);
+    console.log(`[Importer] Color: "${sample.colorName}" (${sample.colorCode})`);
+    console.log(`[Importer] Size: "${sample.sizeName}" (${sample.sizeCode})`);
+    console.log(`[Importer] Price: $${sample.piecePrice}`);
+    const stock = sample.warehouses?.reduce((s, w) => s + w.qty, 0) || sample.qty || 0;
+    console.log(`[Importer] Stock: ${stock}`);
+    console.log(`[Importer] ----------------------------`);
+  }
+
+  private prepareData(products: SSProduct[]) {
+    // Normalize option values - trim whitespace, consistent casing
+    const colorSet = new Map<string, string>(); // code -> normalized name
+    const sizeSet = new Map<string, string>();   // code -> normalized name
+    const colorImages = new Map<string, string[]>();
+
+    products.forEach(p => {
+      // Normalize color name
+      const normalizedColor = this.normalizeOptionValue(p.colorName);
+      if (normalizedColor && !colorSet.has(p.colorCode)) {
+        colorSet.set(p.colorCode, normalizedColor);
+
+        // Collect images for this color
+        const images: string[] = [];
+        if (p.colorFrontImage) images.push(this.fullUrl(p.colorFrontImage));
+        if (p.colorBackImage) images.push(this.fullUrl(p.colorBackImage));
+        if (p.colorOnModelFrontImage) images.push(this.fullUrl(p.colorOnModelFrontImage));
+        colorImages.set(p.colorCode, images);
+      }
+
+      // Normalize size name
+      const normalizedSize = this.normalizeOptionValue(p.sizeName);
+      if (normalizedSize && !sizeSet.has(p.sizeCode)) {
+        sizeSet.set(p.sizeCode, normalizedSize);
+      }
+    });
+
+    // Sort sizes logically
+    const sizeOrder = ['XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', '6XL'];
+    const sizes = Array.from(sizeSet.values()).sort((a, b) => {
+      const aIdx = sizeOrder.indexOf(a.toUpperCase());
+      const bIdx = sizeOrder.indexOf(b.toUpperCase());
+      if (aIdx >= 0 && bIdx >= 0) return aIdx - bIdx;
+      if (aIdx >= 0) return -1;
+      if (bIdx >= 0) return 1;
+      return a.localeCompare(b);
+    });
+
+    const colors = Array.from(colorSet.values());
+
+    // Create normalized products with consistent option values
+    const normalizedProducts = products.map(p => ({
+      ...p,
+      normalizedColor: colorSet.get(p.colorCode) || this.normalizeOptionValue(p.colorName),
+      normalizedSize: sizeSet.get(p.sizeCode) || this.normalizeOptionValue(p.sizeName),
+      totalStock: p.warehouses?.reduce((s, w) => s + (w.qty || 0), 0) || p.qty || 0,
+    }));
+
+    return { colors, sizes, colorImages, normalizedProducts };
+  }
+
+  private normalizeOptionValue(value: string): string {
+    if (!value) return "";
+    // Trim whitespace and normalize to Title Case for consistency
+    return value.trim();
+  }
+
+  private async createProductWithProductSet(
     admin: any,
     style: any,
     colors: string[],
     sizes: string[],
-    products: SSProduct[]
-  ) {
-    // Use productCreate - simpler and more reliable
+    products: Array<SSProduct & { normalizedColor: string; normalizedSize: string; totalStock: number }>
+  ): Promise<{ productId: string; variantCount: number }> {
+
+    // Use productSet mutation - creates product + options + variants atomically
     const mutation = `
-      mutation CreateProduct($input: ProductInput!) {
+      mutation productSet($input: ProductSetInput!) {
+        productSet(input: $input) {
+          product {
+            id
+            title
+            variants(first: 250) {
+              edges {
+                node {
+                  id
+                  sku
+                }
+              }
+            }
+          }
+          userErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `;
+
+    // Build variants array - MUST use exact same option values as productOptions
+    const variants = products.map((p, idx) => ({
+      position: idx + 1,
+      sku: p.sku || `${style.partNumber}-${p.colorCode}-${p.sizeCode}`,
+      price: (p.piecePrice || p.customerPrice || 0).toFixed(2),
+      compareAtPrice: p.mapPrice && p.mapPrice > (p.piecePrice || 0)
+        ? p.mapPrice.toFixed(2)
+        : undefined,
+      barcode: p.gtin || undefined,
+      inventoryPolicy: "DENY",
+      optionValues: [
+        { optionName: "Color", name: p.normalizedColor },
+        { optionName: "Size", name: p.normalizedSize },
+      ],
+    }));
+
+    console.log(`[Importer] Building productSet input...`);
+    console.log(`[Importer] - Title: ${style.title}`);
+    console.log(`[Importer] - Colors: ${colors.slice(0, 5).join(", ")}${colors.length > 5 ? "..." : ""}`);
+    console.log(`[Importer] - Sizes: ${sizes.join(", ")}`);
+    console.log(`[Importer] - Variants: ${variants.length}`);
+
+    const input = {
+      title: style.title,
+      descriptionHtml: this.buildDescription(style, products, colors, sizes),
+      vendor: style.brandName,
+      productType: style.baseCategory || "Apparel",
+      status: "DRAFT",
+      tags: [style.brandName, style.baseCategory, "SSActiveWear", `ss-${style.styleID}`].filter(Boolean),
+      productOptions: [
+        { name: "Color", position: 1, values: colors.map(c => ({ name: c })) },
+        { name: "Size", position: 2, values: sizes.map(s => ({ name: s })) },
+      ],
+      variants,
+    };
+
+    console.log(`[Importer] Sending productSet mutation...`);
+
+    try {
+      const response = await admin.graphql(mutation, { variables: { input } });
+      const json = await response.json();
+
+      // Log full response for debugging
+      if (json.errors) {
+        console.error(`[Importer] GraphQL Errors:`, JSON.stringify(json.errors, null, 2));
+        throw new Error(`GraphQL error: ${JSON.stringify(json.errors)}`);
+      }
+
+      if (json.data?.productSet?.userErrors?.length > 0) {
+        const errors = json.data.productSet.userErrors;
+        console.error(`[Importer] User Errors:`, JSON.stringify(errors, null, 2));
+
+        // Try fallback method if productSet fails
+        console.log(`[Importer] productSet failed, trying fallback method...`);
+        return await this.fallbackCreate(admin, style, colors, sizes, products);
+      }
+
+      const product = json.data?.productSet?.product;
+      if (!product) {
+        console.error(`[Importer] No product returned`);
+        throw new Error("No product returned from productSet");
+      }
+
+      const variantCount = product.variants?.edges?.length || 0;
+      return { productId: product.id, variantCount };
+
+    } catch (error: any) {
+      console.error(`[Importer] productSet error:`, error.message);
+
+      // Try fallback
+      console.log(`[Importer] Trying fallback method...`);
+      return await this.fallbackCreate(admin, style, colors, sizes, products);
+    }
+  }
+
+  private async fallbackCreate(
+    admin: any,
+    style: any,
+    colors: string[],
+    sizes: string[],
+    products: Array<SSProduct & { normalizedColor: string; normalizedSize: string; totalStock: number }>
+  ): Promise<{ productId: string; variantCount: number }> {
+
+    console.log(`[Importer] === FALLBACK METHOD ===`);
+
+    // Step 1: Create basic product
+    const createMutation = `
+      mutation createProduct($input: ProductInput!) {
         productCreate(input: $input) {
           product {
             id
-            handle
-            options {
-              id
-              name
+            variants(first: 5) {
+              edges {
+                node {
+                  id
+                }
+              }
             }
           }
           userErrors {
@@ -126,174 +303,46 @@ export class ImporterService {
       }
     `;
 
-    const description = this.buildDescription(style, products, colors, sizes);
+    console.log(`[Importer] Step 1: Creating base product...`);
 
-    const input: any = {
-      title: style.title,
-      descriptionHtml: description,
-      vendor: style.brandName,
-      productType: style.baseCategory || "Apparel",
-      status: "DRAFT",
-      tags: [style.brandName, style.baseCategory, "SSActiveWear", `ss-${style.styleID}`].filter(Boolean),
-    };
+    const createResponse = await admin.graphql(createMutation, {
+      variables: {
+        input: {
+          title: style.title,
+          descriptionHtml: this.buildDescription(style, products, colors, sizes),
+          vendor: style.brandName,
+          productType: style.baseCategory || "Apparel",
+          status: "DRAFT",
+          tags: ["SSActiveWear", `ss-${style.styleID}`],
+        },
+      },
+    });
 
-    console.log(`[Importer] Creating base product...`);
+    const createJson = await createResponse.json();
 
-    const response = await admin.graphql(mutation, { variables: { input } });
-    const json = await response.json();
-
-    if (json.errors) {
-      console.error(`[Importer] productCreate errors:`, JSON.stringify(json.errors));
-      throw new Error(`productCreate failed: ${JSON.stringify(json.errors)}`);
+    if (createJson.errors || createJson.data?.productCreate?.userErrors?.length > 0) {
+      const err = createJson.errors || createJson.data.productCreate.userErrors;
+      console.error(`[Importer] Create product failed:`, JSON.stringify(err));
+      throw new Error(`Create product failed: ${JSON.stringify(err)}`);
     }
 
-    if (json.data?.productCreate?.userErrors?.length > 0) {
-      console.error(`[Importer] productCreate userErrors:`, JSON.stringify(json.data.productCreate.userErrors));
-      throw new Error(`productCreate failed: ${JSON.stringify(json.data.productCreate.userErrors)}`);
-    }
+    const productId = createJson.data.productCreate.product.id;
+    console.log(`[Importer] Base product created: ${productId}`);
 
-    const product = json.data.productCreate.product;
-    if (!product) {
-      throw new Error("productCreate returned no product");
-    }
+    // Get default variant to delete later
+    const defaultVariants = createJson.data.productCreate.product.variants.edges.map((e: any) => e.node.id);
 
-    // Now add options
-    console.log(`[Importer] Adding options...`);
-    await this.addOptions(admin, product.id, colors, sizes);
-
-    return product;
-  }
-
-  private async addOptions(admin: any, productId: string, colors: string[], sizes: string[]) {
-    const mutation = `
-      mutation AddOptions($productId: ID!, $options: [OptionCreateInput!]!) {
-        productOptionsCreate(productId: $productId, options: $options, variantStrategy: LEAVE_AS_IS) {
+    // Step 2: Create options with CREATE strategy (this creates all variant combinations)
+    const optionsMutation = `
+      mutation createOptions($productId: ID!, $options: [OptionCreateInput!]!) {
+        productOptionsCreate(productId: $productId, options: $options, variantStrategy: CREATE) {
           product {
+            id
             options {
               id
               name
               values
             }
-          }
-          userErrors {
-            field
-            message
-            code
-          }
-        }
-      }
-    `;
-
-    try {
-      const response = await admin.graphql(mutation, {
-        variables: {
-          productId,
-          options: [
-            { name: "Color", values: colors.map(c => ({ name: c })) },
-            { name: "Size", values: sizes.map(s => ({ name: s })) },
-          ],
-        },
-      });
-
-      const json = await response.json();
-
-      if (json.data?.productOptionsCreate?.userErrors?.length > 0) {
-        console.warn(`[Importer] Options warnings:`, json.data.productOptionsCreate.userErrors);
-      }
-
-      console.log(`[Importer] Options added successfully`);
-    } catch (error) {
-      console.error(`[Importer] Failed to add options:`, error);
-      throw error;
-    }
-  }
-
-  private async createAllVariants(admin: any, productId: string, products: SSProduct[]): Promise<number> {
-    // First, delete the default variant
-    await this.deleteDefaultVariant(admin, productId);
-
-    const mutation = `
-      mutation BulkCreateVariants($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-        productVariantsBulkCreate(productId: $productId, variants: $variants) {
-          productVariants {
-            id
-            sku
-            price
-          }
-          userErrors {
-            field
-            message
-            code
-          }
-        }
-      }
-    `;
-
-    let totalCreated = 0;
-    const limitedProducts = products.slice(0, MAX_VARIANTS);
-    const batches = Math.ceil(limitedProducts.length / VARIANT_BATCH_SIZE);
-
-    console.log(`[Importer] Creating ${limitedProducts.length} variants in ${batches} batches...`);
-
-    for (let i = 0; i < limitedProducts.length; i += VARIANT_BATCH_SIZE) {
-      const batchNum = Math.floor(i / VARIANT_BATCH_SIZE) + 1;
-      const batch = limitedProducts.slice(i, i + VARIANT_BATCH_SIZE);
-
-      const variants = batch.map(p => {
-        const price = p.piecePrice || p.customerPrice || 0;
-        return {
-          sku: p.sku,
-          price: price.toFixed(2),
-          compareAtPrice: p.mapPrice && p.mapPrice > price ? p.mapPrice.toFixed(2) : null,
-          barcode: p.gtin || null,
-          optionValues: [
-            { optionName: "Color", name: p.colorName },
-            { optionName: "Size", name: p.sizeName },
-          ],
-          inventoryPolicy: "DENY",
-        };
-      });
-
-      try {
-        console.log(`[Importer] Batch ${batchNum}/${batches}: ${batch.length} variants`);
-
-        const response = await admin.graphql(mutation, {
-          variables: { productId, variants },
-        });
-
-        const json = await response.json();
-
-        if (json.errors) {
-          console.error(`[Importer] Batch ${batchNum} GraphQL errors:`, JSON.stringify(json.errors).slice(0, 500));
-          continue;
-        }
-
-        if (json.data?.productVariantsBulkCreate?.userErrors?.length > 0) {
-          const errors = json.data.productVariantsBulkCreate.userErrors;
-          console.warn(`[Importer] Batch ${batchNum} warnings:`, JSON.stringify(errors.slice(0, 3)));
-        }
-
-        const created = json.data?.productVariantsBulkCreate?.productVariants?.length || 0;
-        totalCreated += created;
-        console.log(`[Importer] Batch ${batchNum} created: ${created} variants`);
-
-        // Delay to avoid rate limits
-        if (i + VARIANT_BATCH_SIZE < limitedProducts.length) {
-          await this.delay(300);
-        }
-      } catch (error: any) {
-        console.error(`[Importer] Batch ${batchNum} error:`, error.message || error);
-      }
-    }
-
-    return totalCreated;
-  }
-
-  private async deleteDefaultVariant(admin: any, productId: string) {
-    try {
-      const query = `
-        query GetVariants($productId: ID!) {
-          product(id: $productId) {
             variants(first: 5) {
               edges {
                 node {
@@ -303,52 +352,174 @@ export class ImporterService {
               }
             }
           }
+          userErrors {
+            field
+            message
+            code
+          }
         }
-      `;
+      }
+    `;
 
-      const response = await admin.graphql(query, { variables: { productId } });
-      const json = await response.json();
+    console.log(`[Importer] Step 2: Creating options (Color: ${colors.length}, Size: ${sizes.length})...`);
 
-      const variants = json.data?.product?.variants?.edges || [];
-      if (variants.length === 0) return;
+    const optionsResponse = await admin.graphql(optionsMutation, {
+      variables: {
+        productId,
+        options: [
+          { name: "Color", values: colors.map(c => ({ name: c })) },
+          { name: "Size", values: sizes.map(s => ({ name: s })) },
+        ],
+      },
+    });
 
-      // Delete all variants (will be recreated)
-      const variantIds = variants.map((v: any) => v.node.id);
+    const optionsJson = await optionsResponse.json();
 
-      const deleteMutation = `
-        mutation DeleteVariants($productId: ID!, $variantsIds: [ID!]!) {
-          productVariantsBulkDelete(productId: $productId, variantsIds: $variantsIds) {
-            userErrors {
-              field
-              message
+    if (optionsJson.errors) {
+      console.error(`[Importer] Options creation GraphQL error:`, JSON.stringify(optionsJson.errors));
+    }
+
+    if (optionsJson.data?.productOptionsCreate?.userErrors?.length > 0) {
+      console.error(`[Importer] Options creation user errors:`,
+        JSON.stringify(optionsJson.data.productOptionsCreate.userErrors));
+    }
+
+    // Step 3: Get all created variants and update them with SKU, price, etc.
+    console.log(`[Importer] Step 3: Fetching variants to update...`);
+
+    let allVariants: Array<{ id: string; title: string; color?: string; size?: string }> = [];
+    let cursor: string | null = null;
+
+    do {
+      const variantsQuery = `
+        query getVariants($productId: ID!, $cursor: String) {
+          product(id: $productId) {
+            variants(first: 100, after: $cursor) {
+              edges {
+                node {
+                  id
+                  title
+                  selectedOptions {
+                    name
+                    value
+                  }
+                }
+                cursor
+              }
+              pageInfo {
+                hasNextPage
+              }
             }
           }
         }
       `;
 
-      await admin.graphql(deleteMutation, {
-        variables: { productId, variantsIds: variantIds },
+      const variantsResponse = await admin.graphql(variantsQuery, {
+        variables: { productId, cursor }
       });
+      const variantsJson = await variantsResponse.json();
 
-      console.log(`[Importer] Deleted ${variantIds.length} default variant(s)`);
-    } catch (error) {
-      console.log(`[Importer] Could not delete default variant:`, error);
+      const edges = variantsJson.data?.product?.variants?.edges || [];
+      for (const edge of edges) {
+        const v = edge.node;
+        const color = v.selectedOptions?.find((o: any) => o.name === "Color")?.value;
+        const size = v.selectedOptions?.find((o: any) => o.name === "Size")?.value;
+        allVariants.push({ id: v.id, title: v.title, color, size });
+        cursor = edge.cursor;
+      }
+
+      if (!variantsJson.data?.product?.variants?.pageInfo?.hasNextPage) {
+        cursor = null;
+      }
+    } while (cursor);
+
+    console.log(`[Importer] Found ${allVariants.length} variants to update`);
+
+    // Step 4: Update variants with SKU, price from SS data
+    const updateMutation = `
+      mutation updateVariants($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+        productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+          productVariants {
+            id
+            sku
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+
+    // Build lookup map: "ColorName|SizeName" -> product data
+    const productMap = new Map<string, typeof products[0]>();
+    products.forEach(p => {
+      const key = `${p.normalizedColor}|${p.normalizedSize}`;
+      productMap.set(key, p);
+    });
+
+    let updatedCount = 0;
+
+    // Update in batches
+    for (let i = 0; i < allVariants.length; i += BATCH_SIZE) {
+      const batch = allVariants.slice(i, i + BATCH_SIZE);
+
+      const updates = batch.map(v => {
+        const key = `${v.color}|${v.size}`;
+        const productData = productMap.get(key);
+
+        return {
+          id: v.id,
+          sku: productData?.sku || "",
+          price: (productData?.piecePrice || 0).toFixed(2),
+          compareAtPrice: productData?.mapPrice && productData.mapPrice > (productData.piecePrice || 0)
+            ? productData.mapPrice.toFixed(2)
+            : undefined,
+          barcode: productData?.gtin || undefined,
+        };
+      }).filter(u => u.sku); // Only update variants with matching product data
+
+      if (updates.length === 0) continue;
+
+      try {
+        const updateResponse = await admin.graphql(updateMutation, {
+          variables: { productId, variants: updates },
+        });
+
+        const updateJson = await updateResponse.json();
+
+        if (updateJson.data?.productVariantsBulkUpdate?.productVariants) {
+          updatedCount += updateJson.data.productVariantsBulkUpdate.productVariants.length;
+        }
+
+        if (updateJson.data?.productVariantsBulkUpdate?.userErrors?.length > 0) {
+          console.warn(`[Importer] Update batch errors:`,
+            updateJson.data.productVariantsBulkUpdate.userErrors.slice(0, 2));
+        }
+
+        // Rate limit protection
+        await this.delay(200);
+      } catch (error) {
+        console.error(`[Importer] Variant update batch error:`, error);
+      }
     }
+
+    console.log(`[Importer] Updated ${updatedCount} variants with SKU/price data`);
+
+    return { productId, variantCount: updatedCount };
   }
 
-  private async uploadImages(
+  private async addImages(
     admin: any,
     productId: string,
     style: any,
     colorImages: Map<string, string[]>
   ): Promise<number> {
     const mutation = `
-      mutation AddMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+      mutation addMedia($productId: ID!, $media: [CreateMediaInput!]!) {
         productCreateMedia(productId: $productId, media: $media) {
           media {
-            ... on MediaImage {
-              id
-            }
+            ... on MediaImage { id }
           }
           mediaUserErrors {
             field
@@ -361,7 +532,7 @@ export class ImporterService {
     const allMedia: any[] = [];
     const addedUrls = new Set<string>();
 
-    // Main image
+    // Main image first
     if (style.styleImage) {
       const url = this.fullUrl(style.styleImage);
       allMedia.push({ originalSource: url, alt: style.title, mediaContentType: "IMAGE" });
@@ -387,16 +558,11 @@ export class ImporterService {
     let totalAdded = 0;
     for (let i = 0; i < allMedia.length; i += 10) {
       const batch = allMedia.slice(i, i + 10);
-
       try {
-        const response = await admin.graphql(mutation, {
-          variables: { productId, media: batch },
-        });
-
+        const response = await admin.graphql(mutation, { variables: { productId, media: batch } });
         const json = await response.json();
         totalAdded += json.data?.productCreateMedia?.media?.length || 0;
-
-        if (i + 10 < allMedia.length) await this.delay(500);
+        await this.delay(500);
       } catch (error) {
         console.error(`[Importer] Image batch error:`, error);
       }
@@ -405,7 +571,11 @@ export class ImporterService {
     return totalAdded;
   }
 
-  private async syncInventory(admin: any, productId: string, products: SSProduct[]) {
+  private async updateInventory(
+    admin: any,
+    productId: string,
+    products: Array<{ sku: string; totalStock: number }>
+  ) {
     // Get location
     const locResponse = await admin.graphql(`query { locations(first: 1) { edges { node { id } } } }`);
     const locJson = await locResponse.json();
@@ -416,79 +586,55 @@ export class ImporterService {
       return;
     }
 
-    console.log(`[Importer] Location: ${locationId}`);
-
     // Build SKU -> stock map
     const stockMap = new Map<string, number>();
-    products.forEach(p => {
-      const qty = p.warehouses?.reduce((sum, w) => sum + (w.qty || 0), 0) || p.qty || 0;
-      stockMap.set(p.sku, qty);
-    });
+    products.forEach(p => stockMap.set(p.sku, p.totalStock));
 
-    // Get all variants with inventory items
+    // Get variants with inventory items
+    const items: Array<{ inventoryItemId: string; quantity: number }> = [];
     let cursor: string | null = null;
-    const inventoryItems: { inventoryItemId: string; quantity: number }[] = [];
 
     do {
       const query = `
-        query GetInventory($productId: ID!, $cursor: String) {
+        query($productId: ID!, $cursor: String) {
           product(id: $productId) {
             variants(first: 100, after: $cursor) {
               edges {
-                node {
-                  sku
-                  inventoryItem {
-                    id
-                  }
-                }
+                node { sku, inventoryItem { id } }
                 cursor
               }
-              pageInfo {
-                hasNextPage
-              }
+              pageInfo { hasNextPage }
             }
           }
         }
       `;
-
       const response = await admin.graphql(query, { variables: { productId, cursor } });
       const json = await response.json();
 
-      const edges = json.data?.product?.variants?.edges || [];
-      for (const { node, cursor: c } of edges) {
-        if (node.sku && node.inventoryItem?.id && stockMap.has(node.sku)) {
-          inventoryItems.push({
-            inventoryItemId: node.inventoryItem.id,
-            quantity: stockMap.get(node.sku)!,
-          });
+      for (const edge of json.data?.product?.variants?.edges || []) {
+        const { sku, inventoryItem } = edge.node;
+        if (sku && inventoryItem?.id && stockMap.has(sku)) {
+          items.push({ inventoryItemId: inventoryItem.id, quantity: stockMap.get(sku)! });
         }
-        cursor = c;
+        cursor = edge.cursor;
       }
 
-      if (!json.data?.product?.variants?.pageInfo?.hasNextPage) {
-        cursor = null;
-      }
+      if (!json.data?.product?.variants?.pageInfo?.hasNextPage) cursor = null;
     } while (cursor);
 
-    console.log(`[Importer] Updating inventory for ${inventoryItems.length} items...`);
+    console.log(`[Importer] Updating inventory for ${items.length} items...`);
 
     // Update in batches
-    const inventoryMutation = `
-      mutation SetInventory($input: InventorySetQuantitiesInput!) {
-        inventorySetQuantities(input: $input) {
-          userErrors {
-            field
-            message
-          }
-        }
-      }
-    `;
-
-    for (let i = 0; i < inventoryItems.length; i += 20) {
-      const batch = inventoryItems.slice(i, i + 20);
-
+    for (let i = 0; i < items.length; i += 20) {
+      const batch = items.slice(i, i + 20);
       try {
-        await admin.graphql(inventoryMutation, {
+        await admin.graphql(`
+          mutation($input: InventorySetQuantitiesInput!) {
+            inventorySetQuantities(input: $input) {
+              userErrors { message }
+            }
+          }
+        `, {
           variables: {
             input: {
               reason: "correction",
@@ -501,63 +647,55 @@ export class ImporterService {
             },
           },
         });
+        await this.delay(100);
       } catch (error) {
         console.warn(`[Importer] Inventory batch error:`, error);
       }
-
-      if (i + 20 < inventoryItems.length) await this.delay(100);
     }
-
-    console.log(`[Importer] Inventory updated`);
   }
 
-  private async activateProduct(admin: any, productId: string) {
+  private async publishProduct(admin: any, productId: string) {
     try {
+      // Set status to ACTIVE
       await admin.graphql(`
-        mutation Activate($input: ProductInput!) {
-          productUpdate(input: $input) {
-            userErrors { field message }
-          }
+        mutation($input: ProductInput!) {
+          productUpdate(input: $input) { userErrors { message } }
         }
-      `, {
-        variables: { input: { id: productId, status: "ACTIVE" } },
-      });
+      `, { variables: { input: { id: productId, status: "ACTIVE" } } });
 
-      // Publish to online store
+      // Publish to Online Store
       const pubResponse = await admin.graphql(`
         query { publications(first: 10) { edges { node { id name } } } }
       `);
       const pubJson = await pubResponse.json();
 
-      const onlineStore = pubJson.data?.publications?.edges?.find((e: any) =>
-        e.node.name === "Online Store"
+      const onlineStore = pubJson.data?.publications?.edges?.find(
+        (e: any) => e.node.name === "Online Store"
       );
 
       if (onlineStore) {
         await admin.graphql(`
-          mutation Publish($id: ID!, $input: [PublicationInput!]!) {
-            publishablePublish(id: $id, input: $input) {
-              userErrors { field message }
-            }
+          mutation($id: ID!, $input: [PublicationInput!]!) {
+            publishablePublish(id: $id, input: $input) { userErrors { message } }
           }
-        `, {
-          variables: { id: productId, input: [{ publicationId: onlineStore.node.id }] },
-        });
+        `, { variables: { id: productId, input: [{ publicationId: onlineStore.node.id }] } });
       }
 
-      console.log(`[Importer] Product activated and published`);
+      console.log(`[Importer] Product published to Online Store`);
     } catch (error) {
       console.warn(`[Importer] Publish error:`, error);
     }
   }
 
-  private buildDescription(style: any, products: SSProduct[], colors: string[], sizes: string[]): string {
+  private buildDescription(
+    style: any,
+    products: SSProduct[],
+    colors: string[],
+    sizes: string[]
+  ): string {
     const prices = products.filter(p => p.piecePrice > 0).map(p => p.piecePrice);
     const minPrice = prices.length ? Math.min(...prices).toFixed(2) : "0.00";
     const maxPrice = prices.length ? Math.max(...prices).toFixed(2) : "0.00";
-    const totalStock = products.reduce((sum, p) => {
-      return sum + (p.warehouses?.reduce((s, w) => s + w.qty, 0) || p.qty || 0);
-    }, 0);
 
     return `
 <div class="product-description">
@@ -566,25 +704,12 @@ export class ImporterService {
   <ul>
     <li><strong>Brand:</strong> ${style.brandName}</li>
     <li><strong>Style:</strong> ${style.partNumber}</li>
-    <li><strong>Colors:</strong> ${colors.length} available</li>
+    <li><strong>Colors:</strong> ${colors.length} options</li>
     <li><strong>Sizes:</strong> ${sizes.join(", ")}</li>
     <li><strong>Price:</strong> $${minPrice} - $${maxPrice}</li>
-    <li><strong>Total Stock:</strong> ${totalStock.toLocaleString()} units</li>
   </ul>
-  <p><small>SSActiveWear Style ID: ${style.styleID}</small></p>
+  <p><small>SSActiveWear Style: ${style.styleID}</small></p>
 </div>`.trim();
-  }
-
-  private sortSizes(sizes: string[]): string[] {
-    const order = ['XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', '6XL'];
-    return sizes.sort((a, b) => {
-      const aIdx = order.indexOf(a);
-      const bIdx = order.indexOf(b);
-      if (aIdx >= 0 && bIdx >= 0) return aIdx - bIdx;
-      if (aIdx >= 0) return -1;
-      if (bIdx >= 0) return 1;
-      return a.localeCompare(b);
-    });
   }
 
   private fullUrl(path: string): string {
