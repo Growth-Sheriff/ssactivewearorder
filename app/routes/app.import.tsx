@@ -74,8 +74,8 @@ export async function action({ request }: ActionFunctionArgs) {
     const result = await importer.importStyle(admin, Number(styleId));
     return json<ActionData>({
       success: true,
-      message: `Successfully imported style ${styleId}`,
-      productId: result?.productId,
+      message: result?.message || `Successfully imported style ${styleId}`,
+      productId: result?.shopifyProduct?.id,
     });
   } catch (error) {
     console.error("Import failed:", error);
@@ -268,7 +268,7 @@ export default function ImportPage() {
                       <InlineStack gap="400" align="space-between" blockAlign="center">
                         <InlineStack gap="300" blockAlign="center">
                           <Thumbnail
-                            source={colorProducts[0]?.colorSwatchImage || `${R2_IMAGE_BASE}/swatch-placeholder.jpg`}
+                            source={SSActiveWearClient.buildImageUrl(colorProducts[0]?.colorSwatchImage || colorProducts[0]?.colorFrontImage, 'small')}
                             alt={colorName}
                             size="small"
                           />
