@@ -288,7 +288,7 @@ export class ImporterService {
         compareAtPrice: p.mapPrice && p.mapPrice > (p.piecePrice || 0) ? p.mapPrice.toFixed(2) : undefined,
         barcode: p.gtin || undefined,
         inventoryPolicy: "DENY",
-        inventoryManagement: "SHOPIFY", // Required for inventory tracking
+        // inventoryManagement: "SHOPIFY", // NOT available in BulkInput 2025-10
         optionValues: [
           { optionName: "Color", name: p.normalizedColor },
           { optionName: "Size", name: p.normalizedSize },
