@@ -266,6 +266,98 @@
   margin-top: 4px;
 }
 
+/* Upload Section */
+.ss-upload-section {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #e1e3e5;
+}
+
+.ss-upload-area {
+  border: 2px dashed #d1d5db;
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #fafafa;
+}
+
+.ss-upload-area:hover {
+  border-color: {{ block.settings.primary_color | default: '#000' }};
+  background: #f5f5f5;
+}
+
+.ss-upload-area.ss-upload-dragover {
+  border-color: {{ block.settings.primary_color | default: '#000' }};
+  background: #f0f7ff;
+}
+
+.ss-upload-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #666;
+}
+
+.ss-upload-placeholder svg {
+  color: #999;
+}
+
+.ss-upload-placeholder p {
+  margin: 0;
+  font-weight: 500;
+}
+
+.ss-upload-placeholder span {
+  font-size: 12px;
+  color: #999;
+}
+
+.ss-upload-preview {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.ss-upload-preview img {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid #e1e3e5;
+  background: white;
+}
+
+.ss-upload-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.ss-upload-info span {
+  font-weight: 500;
+  color: #333;
+}
+
+.ss-remove-design {
+  background: none;
+  border: 1px solid #EF4444;
+  color: #EF4444;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ss-remove-design:hover {
+  background: #EF4444;
+  color: white;
+}
+
 /* Order Summary */
 .ss-order-summary {
   background: linear-gradient(135deg, #f8f9fa 0%, #f0f2f5 100%);
@@ -433,6 +525,7 @@
 <div class="ss-bulk-order-widget"
      id="ss-matrix-widget-{{ block.id }}"
      data-variants='{{ product.variants | json | escape }}'
+     data-product-id="{{ product.id }}"
      data-show-warehouse="{{ block.settings.show_warehouse }}"
      data-button-text="{{ block.settings.button_text }}">
 

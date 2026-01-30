@@ -22,9 +22,15 @@ export const typeDefs = `
     warehouses: [WarehouseQty]
   }
 
+  type ImportStatus {
+    imported: Boolean
+    ssStyleId: String
+  }
+
   type Query {
     searchStyles(term: String): [Style]
     getStyleDetails(styleId: Int!): [Style]
     getInventory(skus: [String]!): [Inventory]
+    isProductImported(shopifyProductId: String!): ImportStatus
   }
 `;
