@@ -456,9 +456,9 @@ export class ImporterService {
           await this.delay(500);
         }
       } catch (err) {
-        // Safely log error
+        // Safely log error - using console.log because PM2 might buffer console.error differently
         const errMsg = err instanceof Error ? err.message : String(err);
-        console.error(`[Importer] EXCEPTION in batch ${batchNum}: ${errMsg}`);
+        console.log(`[Importer] !!! EXCEPTION in batch ${batchNum}: ${errMsg}`);
       }
     }
 
