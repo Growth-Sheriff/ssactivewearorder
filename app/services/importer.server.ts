@@ -57,10 +57,13 @@ export class ImporterService {
     // 7. Update inventory
     await this.updateInventory(admin, productId, normalizedProducts);
 
-    // 8. Publish
+    // 8. Update Metafields
+    await this.updateMetafields(admin, productId, style);
+
+    // 9. Publish
     await this.publishProduct(admin, productId);
 
-    // 9. Save to DB
+    // 10. Save to DB
     const productMap = await prisma.productMap.create({
       data: {
         shop,
@@ -563,6 +566,33 @@ export class ImporterService {
     }
 
     console.log(`[Importer] ✅ Inventory updated: ${updatedCount}/${items.length} variants`);
+  }
+
+  private async updateMetafields(admin: any, productId: string, style: any) {
+    console.log(`[Importer] Updating metafields...`);
+    const metafields = [
+      { namespace: "custom", key: "brand", value: style.brandName, type: "single_line_text_field" },
+      { namespace: "custom", key: "style_code", value: style.partNumber, type: "single_line_text_field" },
+      { namespace: "custom", key: "base_category", value: style.baseCategory || "Apparel", type: "single_line_text_field" },
+    ];
+
+    try {
+      await admin.graphql(`
+        mutation($id: ID!, $metafields: [MetafieldsSetInput!]!) {
+          metafieldsSet(metafields: $metafields) {
+            userErrors { field message }
+          }
+        }
+      `, {
+        variables: {
+          id: productId,
+          metafields: metafields.map(m => ({ ownerId: productId, ...m })),
+        },
+      });
+      console.log(`[Importer] ✅ Metafields updated`);
+    } catch (error) {
+      console.log(`[Importer] ⚠️ Metafield update failed:`, error);
+    }
   }
 
   private async publishProduct(admin: any, productId: string) {
