@@ -1,5 +1,5 @@
 import prisma from "../db.server";
-import { SSActiveWearClient } from "./ssactivewear";
+import { SSActiveWearClient, type SSProduct } from "./ssactivewear";
 
 const ssClient = new SSActiveWearClient();
 
@@ -22,35 +22,15 @@ export class ImporterService {
     }
     console.log(`[Importer] Found ${products.length} variants`);
 
-    // 3. Get unique colors and their images
-    const colorImages = new Map<string, { color: string; image: string }>();
-    products.forEach((product) => {
-      if (!colorImages.has(product.colorCode)) {
-        const imageUrl = this.getFullImageUrl(
-          product.colorFrontImage ||
-          product.colorOnModelFrontImage ||
-          product.colorSwatchImage
-        );
-        colorImages.set(product.colorCode, {
-          color: product.colorName,
-          image: imageUrl,
-        });
-      }
-    });
-    console.log(`[Importer] Found ${colorImages.size} unique colors`);
+    // 3. Get unique colors and sizes
+    const uniqueColors = [...new Set(products.map(p => p.colorName))];
+    const uniqueSizes = [...new Set(products.map(p => p.sizeName))];
+    console.log(`[Importer] Colors: ${uniqueColors.length}, Sizes: ${uniqueSizes.length}`);
 
-    // 4. Build variants for Shopify (limit to 100 due to API limits)
-    const limitedProducts = products.slice(0, 100);
-    const variants = limitedProducts.map((product) => ({
-      sku: product.sku,
-      price: String(product.piecePrice || 0),
-      options: [product.colorName, product.sizeName],
-    }));
-
-    // 5. Get main product image
+    // 4. Get main product image
     const mainImage = this.getFullImageUrl(style.styleImage);
 
-    // 6. Create Product in Shopify - simple approach
+    // 5. Create Product WITHOUT variants first (simpler approach)
     const createProductMutation = `
       mutation productCreate($input: ProductInput!) {
         productCreate(input: $input) {
@@ -58,14 +38,6 @@ export class ImporterService {
             id
             handle
             title
-            variants(first: 100) {
-              edges {
-                node {
-                  id
-                  sku
-                }
-              }
-            }
           }
           userErrors {
             field
@@ -75,18 +47,16 @@ export class ImporterService {
       }
     `;
 
-    const productInput: any = {
+    const productInput = {
       title: style.title,
       descriptionHtml: style.description || "",
       vendor: style.brandName,
-      productType: style.baseCategory,
+      productType: style.baseCategory || "Apparel",
       status: "ACTIVE",
       tags: [style.baseCategory || "Apparel", "SSActiveWear", `ss-style-${styleId}`],
-      options: ["Color", "Size"],
-      variants: variants,
     };
 
-    console.log(`[Importer] Creating product with ${variants.length} variants...`);
+    console.log(`[Importer] Creating base product...`);
 
     try {
       const response = await admin.graphql(createProductMutation, {
@@ -96,12 +66,12 @@ export class ImporterService {
 
       // Check for errors
       if (responseJson.errors) {
-        console.error("[Importer] GraphQL errors:", responseJson.errors);
+        console.error("[Importer] GraphQL errors:", JSON.stringify(responseJson.errors));
         throw new Error(JSON.stringify(responseJson.errors));
       }
 
       if (responseJson.data?.productCreate?.userErrors?.length > 0) {
-        console.error("[Importer] User errors:", responseJson.data.productCreate.userErrors);
+        console.error("[Importer] User errors:", JSON.stringify(responseJson.data.productCreate.userErrors));
         throw new Error(JSON.stringify(responseJson.data.productCreate.userErrors));
       }
 
@@ -110,10 +80,15 @@ export class ImporterService {
         throw new Error("Product creation returned no product");
       }
 
-      console.log(`[Importer] Product created: ${shopifyProduct.id}`);
+      console.log(`[Importer] Base product created: ${shopifyProduct.id}`);
 
-      // 7. Add product images
-      await this.addProductImages(admin, shopifyProduct.id, mainImage, colorImages);
+      // 6. Now create variants using productVariantsBulkCreate
+      const variantCount = await this.createVariants(admin, shopifyProduct.id, products, uniqueColors, uniqueSizes);
+
+      // 7. Add product image
+      if (mainImage) {
+        await this.addProductImage(admin, shopifyProduct.id, mainImage);
+      }
 
       // 8. Save Mapping to DB
       const productMap = await prisma.productMap.create({
@@ -123,7 +98,6 @@ export class ImporterService {
         },
       });
 
-      const variantCount = shopifyProduct.variants?.edges?.length || variants.length;
       console.log(`[Importer] Import complete! Created ${variantCount} variants`);
 
       return {
@@ -134,9 +108,107 @@ export class ImporterService {
       };
 
     } catch (error: any) {
-      console.error("[Importer] Error creating product:", error.message || error);
+      console.error("[Importer] Error:", error.message || error);
       throw error;
     }
+  }
+
+  // Create variants using bulk mutation
+  private async createVariants(
+    admin: any,
+    productId: string,
+    products: SSProduct[],
+    colors: string[],
+    sizes: string[]
+  ): Promise<number> {
+    // First, create product options
+    const optionsMutation = `
+      mutation productOptionsCreate($productId: ID!, $options: [OptionCreateInput!]!) {
+        productOptionsCreate(productId: $productId, options: $options) {
+          userErrors {
+            field
+            message
+          }
+          product {
+            options {
+              id
+              name
+              values
+            }
+          }
+        }
+      }
+    `;
+
+    try {
+      await admin.graphql(optionsMutation, {
+        variables: {
+          productId,
+          options: [
+            { name: "Color", values: colors.map(c => ({ name: c })) },
+            { name: "Size", values: sizes.map(s => ({ name: s })) },
+          ],
+        },
+      });
+      console.log(`[Importer] Options created`);
+    } catch (error) {
+      console.error("[Importer] Failed to create options:", error);
+    }
+
+    // Then create variants in batches
+    const variantMutation = `
+      mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+        productVariantsBulkCreate(productId: $productId, variants: $variants) {
+          productVariants {
+            id
+            sku
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+
+    let createdCount = 0;
+    const batchSize = 50; // Shopify limit
+
+    for (let i = 0; i < products.length; i += batchSize) {
+      const batch = products.slice(i, i + batchSize);
+
+      const variants = batch.map(product => ({
+        sku: product.sku,
+        price: String(product.piecePrice || 0),
+        optionValues: [
+          { optionName: "Color", name: product.colorName },
+          { optionName: "Size", name: product.sizeName },
+        ],
+      }));
+
+      try {
+        const response = await admin.graphql(variantMutation, {
+          variables: {
+            productId,
+            variants,
+          },
+        });
+        const json = await response.json();
+
+        if (json.data?.productVariantsBulkCreate?.productVariants) {
+          createdCount += json.data.productVariantsBulkCreate.productVariants.length;
+        }
+
+        if (json.data?.productVariantsBulkCreate?.userErrors?.length > 0) {
+          console.warn("[Importer] Variant errors:", json.data.productVariantsBulkCreate.userErrors);
+        }
+      } catch (error) {
+        console.error(`[Importer] Batch ${i / batchSize + 1} failed:`, error);
+      }
+    }
+
+    console.log(`[Importer] Created ${createdCount} variants`);
+    return createdCount;
   }
 
   // Get full SSActiveWear image URL
@@ -152,49 +224,9 @@ export class ImporterService {
     return `https://www.ssactivewear.com/${imagePath}`;
   }
 
-  // Add images to the product
-  private async addProductImages(
-    admin: any,
-    productId: string,
-    mainImage: string,
-    colorImages: Map<string, { color: string; image: string }>
-  ) {
-    if (!mainImage && colorImages.size === 0) {
-      console.log("[Importer] No images to add");
-      return;
-    }
-
-    const mediaInputs: any[] = [];
-
-    // Add main image first
-    if (mainImage) {
-      mediaInputs.push({
-        alt: "Main product image",
-        mediaContentType: "IMAGE",
-        originalSource: mainImage,
-      });
-    }
-
-    // Add color images (limit to prevent timeout)
-    let count = 0;
-    for (const [_, colorData] of colorImages) {
-      if (count >= 10) break; // Limit to 10 color images
-      if (colorData.image && colorData.image !== mainImage) {
-        mediaInputs.push({
-          alt: colorData.color,
-          mediaContentType: "IMAGE",
-          originalSource: colorData.image,
-        });
-        count++;
-      }
-    }
-
-    if (mediaInputs.length === 0) {
-      console.log("[Importer] No valid images to add");
-      return;
-    }
-
-    console.log(`[Importer] Adding ${mediaInputs.length} images...`);
+  // Add main image to product
+  private async addProductImage(admin: any, productId: string, imageUrl: string) {
+    if (!imageUrl) return;
 
     const addMediaMutation = `
       mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
@@ -202,7 +234,6 @@ export class ImporterService {
           media {
             ... on MediaImage {
               id
-              alt
             }
           }
           mediaUserErrors {
@@ -214,22 +245,19 @@ export class ImporterService {
     `;
 
     try {
-      const response = await admin.graphql(addMediaMutation, {
+      await admin.graphql(addMediaMutation, {
         variables: {
           productId,
-          media: mediaInputs,
+          media: [{
+            alt: "Product Image",
+            mediaContentType: "IMAGE",
+            originalSource: imageUrl,
+          }],
         },
       });
-      const responseJson = await response.json();
-
-      if (responseJson.data?.productCreateMedia?.mediaUserErrors?.length > 0) {
-        console.warn("[Importer] Media errors:", responseJson.data.productCreateMedia.mediaUserErrors);
-      } else {
-        console.log(`[Importer] Successfully added ${mediaInputs.length} images`);
-      }
+      console.log(`[Importer] Added product image`);
     } catch (error) {
-      console.error("[Importer] Failed to add images:", error);
-      // Don't throw - images are optional
+      console.error("[Importer] Failed to add image:", error);
     }
   }
 }
