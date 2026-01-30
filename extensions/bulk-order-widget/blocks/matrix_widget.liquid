@@ -41,19 +41,20 @@
       "type": "text",
       "id": "widget_title",
       "label": "Widget Title",
-      "default": "Bulk Order - Live Inventory"
+      "default": "Bulk Order - Select Variants"
     }
   ]
 }
 {% endschema %}
 
 <style>
+/* Base Container */
 .ss-bulk-order-widget {
   padding: 24px;
   border: 1px solid #e1e3e5;
-  border-radius: 12px;
+  border-radius: 16px;
   margin: 24px 0;
-  background: linear-gradient(to bottom, #fafbfc, #ffffff);
+  background: #ffffff;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
@@ -61,8 +62,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
   border-bottom: 1px solid #e1e3e5;
 }
 
@@ -70,99 +71,247 @@
   font-size: 18px;
   font-weight: 600;
   margin: 0;
+  color: #1a1a1a;
 }
 
+/* Loading State */
 .ss-loading {
   text-align: center;
-  padding: 40px;
+  padding: 60px 20px;
   color: #637381;
 }
 
 .ss-loading-spinner {
   display: inline-block;
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border: 3px solid #e1e3e5;
   border-top-color: {{ block.settings.primary_color | default: '#000' }};
   border-radius: 50%;
-  animation: ss-spin 1s linear infinite;
+  animation: ss-spin 0.8s linear infinite;
 }
 
 @keyframes ss-spin {
   to { transform: rotate(360deg); }
 }
 
-.ss-matrix-table {
-  width: 100%;
-  border-collapse: collapse;
+/* Section Titles */
+.ss-section {
+  margin-bottom: 24px;
+}
+
+.ss-section-title {
   font-size: 14px;
-}
-
-.ss-matrix-table th {
-  background: #f6f6f7;
-  padding: 12px 8px;
-  text-align: left;
   font-weight: 600;
-  border-bottom: 2px solid #e1e3e5;
-  white-space: nowrap;
+  color: #637381;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
 }
 
-.ss-matrix-table td {
-  padding: 10px 8px;
-  border-bottom: 1px solid #f0f0f0;
-  vertical-align: middle;
+/* Color Grid - Variant Images */
+.ss-color-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 12px;
 }
 
-.ss-matrix-table tr:hover {
-  background: #fafbfc;
+.ss-color-card {
+  cursor: pointer;
+  border: 2px solid #e1e3e5;
+  border-radius: 12px;
+  padding: 8px;
+  text-align: center;
+  transition: all 0.2s ease;
+  background: #fff;
 }
 
-.ss-stock-badge {
-  display: inline-block;
-  padding: 4px 8px;
-  border-radius: 4px;
+.ss-color-card:hover {
+  border-color: #999;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.ss-color-card.ss-color-selected {
+  border-color: {{ block.settings.primary_color | default: '#000' }};
+  box-shadow: 0 0 0 3px {{ block.settings.primary_color | default: '#000' }}20;
+}
+
+.ss-color-image {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f5f5f5;
+  margin-bottom: 8px;
+}
+
+.ss-color-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ss-no-image {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #999;
+}
+
+.ss-color-name {
   font-size: 12px;
   font-weight: 500;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.ss-stock-high { background: #E3F5E1; color: #1B7F1B; }
-.ss-stock-medium { background: #FFF8E1; color: #B86E00; }
-.ss-stock-low { background: #FFE5E5; color: #CC0000; }
-.ss-stock-none { background: #f0f0f0; color: #999; }
+/* Sizes Section */
+.ss-sizes-section {
+  margin-bottom: 24px;
+}
 
-.ss-qty-input {
-  width: 70px;
-  padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+.ss-sizes-section.ss-hidden {
+  display: none;
+}
+
+.ss-sizes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 12px;
+}
+
+.ss-size-card {
+  background: #f8f9fa;
+  border: 1px solid #e1e3e5;
+  border-radius: 12px;
+  padding: 16px 12px;
   text-align: center;
-  font-size: 14px;
-  transition: border-color 0.2s;
+  transition: all 0.2s;
 }
 
-.ss-qty-input:focus {
+.ss-size-card:hover:not(.ss-size-out):not(.ss-size-unavailable) {
+  background: #fff;
+  border-color: {{ block.settings.primary_color | default: '#000' }};
+}
+
+.ss-size-card.ss-size-out {
+  opacity: 0.5;
+  background: #f5f5f5;
+}
+
+.ss-size-card.ss-size-unavailable {
+  opacity: 0.3;
+}
+
+.ss-size-input {
+  width: 100%;
+  max-width: 70px;
+  padding: 10px;
+  border: 2px solid #e1e3e5;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 600;
+  transition: all 0.2s;
+  margin-bottom: 8px;
+}
+
+.ss-size-input:focus {
   outline: none;
   border-color: {{ block.settings.primary_color | default: '#000' }};
-  box-shadow: 0 0 0 2px {{ block.settings.primary_color | default: '#000' }}20;
+  box-shadow: 0 0 0 3px {{ block.settings.primary_color | default: '#000' }}15;
 }
 
-.ss-qty-input:disabled {
-  background: #f5f5f5;
+.ss-size-input.ss-disabled {
+  background: #f0f0f0;
   cursor: not-allowed;
+  color: #999;
 }
 
+.ss-size-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.ss-size-stock {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.ss-size-stock.ss-stock-high { background: #E3F5E1; color: #1B7F1B; }
+.ss-size-stock.ss-stock-medium { background: #FFF8E1; color: #B86E00; }
+.ss-size-stock.ss-stock-low { background: #FFE5E5; color: #CC0000; }
+.ss-size-stock.ss-stock-out { background: #f0f0f0; color: #999; }
+
+.ss-size-price {
+  font-size: 11px;
+  color: #637381;
+  margin-top: 4px;
+}
+
+.ss-warehouse-details {
+  font-size: 10px;
+  color: #999;
+  margin-top: 4px;
+}
+
+/* Order Summary */
+.ss-order-summary {
+  background: linear-gradient(135deg, #f8f9fa 0%, #f0f2f5 100%);
+  border-radius: 12px;
+  padding: 20px;
+  margin: 20px 0;
+}
+
+.ss-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.ss-summary-row:last-child {
+  margin-bottom: 0;
+}
+
+.ss-summary-label {
+  font-size: 14px;
+  color: #637381;
+}
+
+.ss-summary-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: {{ block.settings.primary_color | default: '#000' }};
+}
+
+.ss-total-price {
+  font-size: 24px;
+}
+
+/* Add to Cart Button */
 .ss-add-to-cart-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  margin-top: 20px;
-  padding: 14px 24px;
+  padding: 16px 24px;
   background: {{ block.settings.primary_color | default: '#000' }};
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: 12px;
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
@@ -171,511 +320,144 @@
 
 .ss-add-to-cart-btn:hover:not(:disabled) {
   opacity: 0.9;
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px {{ block.settings.primary_color | default: '#000' }}40;
 }
 
 .ss-add-to-cart-btn:disabled {
   background: #ccc;
   cursor: not-allowed;
   transform: none;
+  box-shadow: none;
 }
 
-.ss-summary {
+.ss-btn-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: ss-spin 0.6s linear infinite;
+}
+
+/* Toast Notifications */
+.ss-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
-  justify-content: space-around;
-  padding: 16px;
-  background: #f6f6f7;
-  border-radius: 8px;
-  margin-top: 16px;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 24px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 10000;
+  animation: ss-toast-in 0.3s ease;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.2);
 }
 
-.ss-summary-item { text-align: center; }
-.ss-summary-value {
-  font-size: 20px;
-  font-weight: 700;
-  color: {{ block.settings.primary_color | default: '#000' }};
-}
-.ss-summary-label { font-size: 12px; color: #637381; }
-
-.ss-warehouse-details {
-  font-size: 11px;
-  color: #666;
-  margin-top: 4px;
+.ss-toast-success {
+  background: {{ block.settings.accent_color | default: '#4CAF50' }};
+  color: white;
 }
 
+.ss-toast-error {
+  background: #EF4444;
+  color: white;
+}
+
+@keyframes ss-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* Error State */
 .ss-error {
-  background: #FFE5E5;
-  color: #CC0000;
-  padding: 16px;
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
   border-radius: 8px;
+  padding: 16px;
+  color: #991B1B;
   text-align: center;
 }
 
-.ss-success-toast {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  background: {{ block.settings.accent_color | default: '#4CAF50' }};
-  color: white;
-  padding: 16px 24px;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  z-index: 9999;
-  animation: ss-slideIn 0.3s ease;
+.ss-error p {
+  margin: 0;
 }
 
-@keyframes ss-slideIn {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+/* Responsive */
+@media (max-width: 600px) {
+  .ss-bulk-order-widget {
+    padding: 16px;
+    margin: 16px 0;
+  }
+
+  .ss-color-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+
+  .ss-color-card {
+    padding: 6px;
+  }
+
+  .ss-color-name {
+    font-size: 10px;
+  }
+
+  .ss-sizes-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .ss-size-card {
+    padding: 12px 8px;
+  }
+
+  .ss-size-input {
+    padding: 8px;
+    font-size: 14px;
+  }
 }
 </style>
 
-<div
-  class="ss-bulk-order-widget"
-  id="ss-bulk-widget-{{ block.id }}"
-  data-product-id="{{ product.id }}"
-  data-product-handle="{{ product.handle }}"
-  data-variants='{{ product.variants | json }}'
-  data-show-warehouse="{{ block.settings.show_warehouse }}"
-  data-button-text="{{ block.settings.button_text | default: 'Add Selected to Cart' }}"
->
+<div class="ss-bulk-order-widget"
+     id="ss-matrix-widget-{{ block.id }}"
+     data-variants='{{ product.variants | json | escape }}'
+     data-show-warehouse="{{ block.settings.show_warehouse }}"
+     data-button-text="{{ block.settings.button_text }}">
+
   <div class="ss-bulk-header">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24">
-      <rect x="3" y="3" width="18" height="18" rx="2"/>
-      <path d="M3 9h18M9 21V9"/>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{{ block.settings.primary_color | default: '#000' }}" stroke-width="2">
+      <rect x="1" y="3" width="15" height="13"></rect>
+      <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
+      <circle cx="5.5" cy="18.5" r="2.5"></circle>
+      <circle cx="18.5" cy="18.5" r="2.5"></circle>
     </svg>
-    <h3>{{ block.settings.widget_title | default: 'Bulk Order - Live Inventory' }}</h3>
+    <h3>{{ block.settings.widget_title }}</h3>
   </div>
 
-  <div id="ss-loading-{{ block.id }}" class="ss-loading">
+  <div class="ss-loading" id="ss-loading-{{ block.id }}">
     <div class="ss-loading-spinner"></div>
-    <p style="margin-top: 12px;">Loading live inventory...</p>
+    <p style="margin-top: 12px;">Loading inventory...</p>
   </div>
 
-  <div id="ss-content-{{ block.id }}" style="display: none;"></div>
-  <div id="ss-error-{{ block.id }}" class="ss-error" style="display: none;"></div>
+  <div class="ss-content" id="ss-content-{{ block.id }}" style="display: none;">
+    <!-- Content rendered by JS -->
+  </div>
+
+  <div class="ss-error" id="ss-error-{{ block.id }}" style="display: none;">
+    <!-- Error rendered by JS -->
+  </div>
 </div>
 
-<script>
-(function() {
-  // Wait for DOM to be ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initWidget);
-  } else {
-    initWidget();
-  }
-
-  function initWidget() {
-    const blockId = '{{ block.id }}';
-    const container = document.getElementById('ss-bulk-widget-' + blockId);
-    const loadingEl = document.getElementById('ss-loading-' + blockId);
-    const contentEl = document.getElementById('ss-content-' + blockId);
-    const errorEl = document.getElementById('ss-error-' + blockId);
-
-    if (!container) {
-      console.error('[SSBulkOrder] Widget container not found');
-      return;
-    }
-
-    const variants = JSON.parse(container.dataset.variants || '[]');
-    const showWarehouse = container.dataset.showWarehouse === 'true';
-    const buttonText = container.dataset.buttonText || 'Add Selected to Cart';
-
-    console.log('[SSBulkOrder] Initializing with', variants.length, 'variants');
-
-    // Get SKUs from variants
-    const skus = variants.map(v => v.sku).filter(s => s && s.trim());
-
-    if (skus.length === 0) {
-      loadingEl.style.display = 'none';
-      // No SSActiveWear SKUs - just show the variant list with Shopify inventory
-      renderSimpleList(variants, contentEl, buttonText);
-      contentEl.style.display = 'block';
-      return;
-    }
-
-    // Fetch inventory from API
-    fetchInventory(skus)
-      .then(inventoryData => {
-        loadingEl.style.display = 'none';
-        renderMatrix(variants, inventoryData, contentEl, { showWarehouse, buttonText });
-        contentEl.style.display = 'block';
-      })
-      .catch(error => {
-        console.error('[SSBulkOrder] Error:', error);
-        loadingEl.style.display = 'none';
-        // Fallback to simple list with Shopify inventory
-        renderSimpleList(variants, contentEl, buttonText);
-        contentEl.style.display = 'block';
-      });
-  }
-
-  async function fetchInventory(skus) {
-    console.log('[SSBulkOrder] Fetching inventory for', skus.length, 'SKUs');
-
-    const response = await fetch('/apps/ssactiveorder/api/graphql', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: `
-          query GetInventory($skus: [String]!) {
-            getInventory(skus: $skus) {
-              sku
-              warehouses {
-                warehouseAbbr
-                qty
-              }
-            }
-          }
-        `,
-        variables: { skus }
-      })
-    });
-
-    const json = await response.json();
-    console.log('[SSBulkOrder] API Response:', json);
-
-    if (json.data && json.data.getInventory) {
-      const inventoryMap = new Map();
-      json.data.getInventory.forEach(item => {
-        const warehouseData = {};
-        let total = 0;
-        item.warehouses.forEach(w => {
-          warehouseData[w.warehouseAbbr] = w.qty;
-          total += w.qty;
-        });
-        inventoryMap.set(item.sku, { total, warehouses: warehouseData });
-      });
-      return inventoryMap;
-    }
-
-    return new Map();
-  }
-
-  function renderSimpleList(variants, container, buttonText) {
-    let html = '<table class="ss-matrix-table"><thead><tr>';
-    html += '<th>Variant</th><th>Price</th><th style="text-align: center;">Quantity</th>';
-    html += '</tr></thead><tbody>';
-
-    variants.forEach(variant => {
-      const available = variant.available;
-      const stockClass = available ? 'ss-stock-high' : 'ss-stock-none';
-      const stockText = available ? 'In Stock' : 'Out of Stock';
-
-      html += `
-        <tr>
-          <td>
-            <strong>${variant.title}</strong>
-            ${variant.sku ? `<br><small style="color: #666;">SKU: ${variant.sku}</small>` : ''}
-          </td>
-          <td>
-            <span class="ss-stock-badge ${stockClass}">${stockText}</span>
-          </td>
-          <td style="text-align: center;">
-            <input
-              type="number"
-              class="ss-qty-input"
-              min="0"
-              value=""
-              placeholder="0"
-              data-variant-id="${variant.id}"
-              ${!available ? 'disabled' : ''}
-            >
-          </td>
-        </tr>
-      `;
-    });
-
-    html += '</tbody></table>';
-    html += renderSummaryAndButton(buttonText);
-    container.innerHTML = html;
-    attachEventListeners(container, buttonText);
-  }
-
-  function renderMatrix(variants, inventoryMap, container, options) {
-    const { showWarehouse, buttonText } = options;
-
-    // Group variants by color/size
-    const colorSizeMap = new Map();
-    const allSizes = new Set();
-    const allColors = new Set();
-
-    variants.forEach(variant => {
-      const color = variant.option1 || 'Default';
-      const size = variant.option2 || 'One Size';
-
-      allColors.add(color);
-      allSizes.add(size);
-
-      if (!colorSizeMap.has(color)) {
-        colorSizeMap.set(color, new Map());
-      }
-
-      const stockInfo = inventoryMap.get(variant.sku) || { total: 0, warehouses: {} };
-      colorSizeMap.get(color).set(size, {
-        variant,
-        stock: stockInfo.total,
-        warehouses: stockInfo.warehouses,
-      });
-    });
-
-    const sizes = Array.from(allSizes);
-    const colors = Array.from(allColors);
-
-    let html = '';
-
-    if (colors.length > 1 && sizes.length > 1) {
-      html = renderExpandedMatrix(colors, sizes, colorSizeMap, showWarehouse);
-    } else {
-      html = renderCompactList(variants, inventoryMap, showWarehouse);
-    }
-
-    html += renderSummaryAndButton(buttonText);
-    container.innerHTML = html;
-    attachEventListeners(container, buttonText);
-  }
-
-  function renderExpandedMatrix(colors, sizes, colorSizeMap, showWarehouse) {
-    let html = '<div style="overflow-x: auto;"><table class="ss-matrix-table">';
-
-    html += '<thead><tr><th>Color / Size</th>';
-    sizes.forEach(size => {
-      html += `<th style="text-align: center;">${size}</th>`;
-    });
-    html += '</tr></thead><tbody>';
-
-    colors.forEach(color => {
-      html += `<tr><td><strong>${color}</strong></td>`;
-
-      sizes.forEach(size => {
-        const data = colorSizeMap.get(color)?.get(size);
-
-        if (data) {
-          const stockBadgeClass = getStockClass(data.stock);
-          html += `
-            <td style="text-align: center;">
-              <span class="ss-stock-badge ${stockBadgeClass}">${formatStock(data.stock)}</span>
-              <br>
-              <input
-                type="number"
-                class="ss-qty-input"
-                min="0"
-                max="${data.stock}"
-                value=""
-                placeholder="0"
-                data-variant-id="${data.variant.id}"
-                data-max-stock="${data.stock}"
-                ${data.stock === 0 ? 'disabled' : ''}
-              >
-              ${showWarehouse ? renderWarehouseDetails(data.warehouses) : ''}
-            </td>
-          `;
-        } else {
-          html += '<td style="text-align: center; color: #999;">-</td>';
-        }
-      });
-
-      html += '</tr>';
-    });
-
-    html += '</tbody></table></div>';
-    return html;
-  }
-
-  function renderCompactList(variants, inventoryMap, showWarehouse) {
-    let html = '<table class="ss-matrix-table"><thead><tr>';
-    html += '<th>Variant</th><th>Stock</th><th style="text-align: center;">Quantity</th>';
-    html += '</tr></thead><tbody>';
-
-    variants.forEach(variant => {
-      const stockInfo = inventoryMap.get(variant.sku) || { total: 0, warehouses: {} };
-      const stock = stockInfo.total;
-      const stockBadgeClass = getStockClass(stock);
-
-      html += `
-        <tr>
-          <td>
-            <strong>${variant.title}</strong>
-            ${variant.sku ? `<br><small style="color: #666;">SKU: ${variant.sku}</small>` : ''}
-          </td>
-          <td>
-            <span class="ss-stock-badge ${stockBadgeClass}">${formatStock(stock)}</span>
-            ${showWarehouse ? renderWarehouseDetails(stockInfo.warehouses) : ''}
-          </td>
-          <td style="text-align: center;">
-            <input
-              type="number"
-              class="ss-qty-input"
-              min="0"
-              max="${stock}"
-              value=""
-              placeholder="0"
-              data-variant-id="${variant.id}"
-              data-max-stock="${stock}"
-              ${stock === 0 ? 'disabled' : ''}
-            >
-          </td>
-        </tr>
-      `;
-    });
-
-    html += '</tbody></table>';
-    return html;
-  }
-
-  function renderSummaryAndButton(buttonText) {
-    return `
-      <div class="ss-summary">
-        <div class="ss-summary-item">
-          <div class="ss-summary-value" id="ss-total-items">0</div>
-          <div class="ss-summary-label">Total Items</div>
-        </div>
-        <div class="ss-summary-item">
-          <div class="ss-summary-value" id="ss-total-variants">0</div>
-          <div class="ss-summary-label">Variants</div>
-        </div>
-      </div>
-      <button class="ss-add-to-cart-btn" id="ss-add-to-cart-btn" disabled>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
-          <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
-        </svg>
-        ${buttonText}
-      </button>
-    `;
-  }
-
-  function renderWarehouseDetails(warehouses) {
-    const entries = Object.entries(warehouses).filter(([_, qty]) => qty > 0);
-    if (entries.length === 0) return '';
-
-    const details = entries.map(([abbr, qty]) => `${abbr}: ${qty}`).join(', ');
-    return `<div class="ss-warehouse-details">${details}</div>`;
-  }
-
-  function getStockClass(stock) {
-    if (stock === 0) return 'ss-stock-none';
-    if (stock < 50) return 'ss-stock-low';
-    if (stock < 500) return 'ss-stock-medium';
-    return 'ss-stock-high';
-  }
-
-  function formatStock(qty) {
-    if (qty === 0) return 'Out of Stock';
-    if (qty >= 1000) return `${(qty / 1000).toFixed(1)}K`;
-    return qty.toString();
-  }
-
-  function attachEventListeners(container, buttonText) {
-    const inputs = container.querySelectorAll('.ss-qty-input');
-    const addToCartBtn = container.querySelector('#ss-add-to-cart-btn');
-    const totalItemsEl = container.querySelector('#ss-total-items');
-    const totalVariantsEl = container.querySelector('#ss-total-variants');
-
-    function updateSummary() {
-      let totalItems = 0;
-      let totalVariants = 0;
-
-      inputs.forEach(input => {
-        const qty = parseInt(input.value) || 0;
-        if (qty > 0) {
-          totalItems += qty;
-          totalVariants++;
-        }
-      });
-
-      if (totalItemsEl) totalItemsEl.textContent = totalItems;
-      if (totalVariantsEl) totalVariantsEl.textContent = totalVariants;
-      if (addToCartBtn) addToCartBtn.disabled = totalItems === 0;
-    }
-
-    inputs.forEach(input => {
-      input.addEventListener('input', function() {
-        const max = parseInt(this.dataset.maxStock) || 9999;
-        let value = parseInt(this.value) || 0;
-
-        if (value > max) {
-          this.value = max;
-        }
-        if (value < 0) {
-          this.value = 0;
-        }
-
-        updateSummary();
-      });
-    });
-
-    if (addToCartBtn) {
-      addToCartBtn.addEventListener('click', async function() {
-        const items = [];
-
-        inputs.forEach(input => {
-          const qty = parseInt(input.value) || 0;
-          if (qty > 0) {
-            items.push({
-              id: input.dataset.variantId,
-              quantity: qty
-            });
-          }
-        });
-
-        if (items.length === 0) return;
-
-        addToCartBtn.disabled = true;
-        addToCartBtn.innerHTML = '<span class="ss-loading-spinner" style="width:20px;height:20px;border-width:2px;"></span> Adding...';
-
-        try {
-          const response = await fetch(window.Shopify.routes.root + 'cart/add.js', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ items })
-          });
-
-          if (response.ok) {
-            showSuccessToast(`Added ${items.reduce((sum, i) => sum + i.quantity, 0)} items to cart!`);
-
-            inputs.forEach(input => {
-              input.value = '';
-            });
-            updateSummary();
-
-            setTimeout(() => {
-              window.location.href = '/cart';
-            }, 1500);
-          } else {
-            throw new Error('Failed to add to cart');
-          }
-        } catch (error) {
-          console.error('Add to cart error:', error);
-          alert('Failed to add items to cart. Please try again.');
-        } finally {
-          addToCartBtn.disabled = false;
-          addToCartBtn.innerHTML = `
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
-              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
-            </svg>
-            ${buttonText}
-          `;
-        }
-      });
-    }
-  }
-
-  function showSuccessToast(message) {
-    const toast = document.createElement('div');
-    toast.className = 'ss-success-toast';
-    toast.innerHTML = `
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle;margin-right:8px;">
-        <polyline points="20 6 9 17 4 12"/>
-      </svg>
-      ${message}
-    `;
-    document.body.appendChild(toast);
-
-    setTimeout(() => {
-      toast.remove();
-    }, 3000);
-  }
-})();
-</script>
+{{ 'matrix.js' | asset_url | script_tag }}

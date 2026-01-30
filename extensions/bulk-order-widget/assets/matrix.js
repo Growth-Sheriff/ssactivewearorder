@@ -1,8 +1,9 @@
-// SSActiveWear Bulk Order Matrix Widget
+// SSActiveWear Variant Selection Widget
+// Redesigned: Color variant images + Size-based quantity inputs
 (function() {
-  document.addEventListener("DOMContentLoaded", initBulkOrderWidgets);
+  document.addEventListener("DOMContentLoaded", initVariantWidgets);
 
-  function initBulkOrderWidgets() {
+  function initVariantWidgets() {
     const widgets = document.querySelectorAll('[id^="ss-matrix-widget-"]');
     widgets.forEach(widget => initWidget(widget));
   }
@@ -14,7 +15,6 @@
     const errorEl = document.getElementById(`ss-error-${blockId}`);
 
     const variants = JSON.parse(container.dataset.variants || '[]');
-    const layout = container.dataset.layout || 'expanded';
     const showWarehouse = container.dataset.showWarehouse === 'true';
     const buttonText = container.dataset.buttonText || 'Add Selected to Cart';
 
@@ -31,11 +31,11 @@
     fetchInventory(skus)
       .then(inventoryData => {
         loadingEl.style.display = 'none';
-        renderMatrix(variants, inventoryData, contentEl, { layout, showWarehouse, buttonText });
+        renderVariantSelector(variants, inventoryData, contentEl, { showWarehouse, buttonText });
         contentEl.style.display = 'block';
       })
       .catch(error => {
-        console.error("Matrix Widget Error:", error);
+        console.error("Widget Error:", error);
         loadingEl.style.display = 'none';
         errorEl.innerHTML = `<p>Unable to load inventory data. Please refresh the page.</p>`;
         errorEl.style.display = 'block';
@@ -81,62 +81,152 @@
     return new Map();
   }
 
-  function renderMatrix(variants, inventoryMap, container, options) {
-    const { layout, showWarehouse, buttonText } = options;
+  function renderVariantSelector(variants, inventoryMap, container, options) {
+    const { showWarehouse, buttonText } = options;
 
-    // Group variants by option (color/size)
-    const colorSizeMap = new Map();
+    // Group variants by color (option1) and collect sizes (option2)
+    const colorMap = new Map();
     const allSizes = new Set();
-    const allColors = new Set();
 
     variants.forEach(variant => {
       const color = variant.option1 || 'Default';
       const size = variant.option2 || 'One Size';
+      const image = variant.featured_image?.src || variant.image || '';
 
-      allColors.add(color);
       allSizes.add(size);
 
-      if (!colorSizeMap.has(color)) {
-        colorSizeMap.set(color, new Map());
+      if (!colorMap.has(color)) {
+        colorMap.set(color, {
+          name: color,
+          image: image,
+          sizes: new Map()
+        });
       }
 
       const stockInfo = inventoryMap.get(variant.sku) || { total: 0, warehouses: {} };
-      colorSizeMap.get(color).set(size, {
+      colorMap.get(color).sizes.set(size, {
         variant,
         stock: stockInfo.total,
         warehouses: stockInfo.warehouses,
+        price: parseFloat(variant.price) / 100 // Shopify prices are in cents
       });
+
+      // Update color image if we have one
+      if (image && !colorMap.get(color).image) {
+        colorMap.get(color).image = image;
+      }
     });
 
+    const colors = Array.from(colorMap.values());
     const sizes = Array.from(allSizes);
-    const colors = Array.from(allColors);
+
+    // Sort sizes by common order
+    const sizeOrder = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', 'XXS', 'XSM', 'SML', 'MED', 'LRG', 'XLG', '2X', '3X', '4X', '5X'];
+    sizes.sort((a, b) => {
+      const aIdx = sizeOrder.findIndex(s => a.toUpperCase().includes(s));
+      const bIdx = sizeOrder.findIndex(s => b.toUpperCase().includes(s));
+      if (aIdx === -1 && bIdx === -1) return a.localeCompare(b);
+      if (aIdx === -1) return 1;
+      if (bIdx === -1) return -1;
+      return aIdx - bIdx;
+    });
 
     let html = '';
 
-    if (layout === 'expanded' && colors.length > 1 && sizes.length > 1) {
-      // Full matrix layout for products with multiple colors and sizes
-      html = renderExpandedMatrix(colors, sizes, colorSizeMap, showWarehouse);
-    } else {
-      // Compact list layout
-      html = renderCompactList(variants, inventoryMap, showWarehouse);
-    }
-
-    // Summary section
+    // Color variant selector - visual grid
     html += `
-      <div class="ss-summary" id="ss-summary">
-        <div class="ss-summary-item">
-          <div class="ss-summary-value" id="ss-total-items">0</div>
-          <div class="ss-summary-label">Total Items</div>
+      <div class="ss-section">
+        <div class="ss-section-title">Select Color</div>
+        <div class="ss-color-grid">
+    `;
+
+    colors.forEach((color, index) => {
+      const isFirst = index === 0;
+      html += `
+        <div class="ss-color-card ${isFirst ? 'ss-color-selected' : ''}"
+             data-color="${escapeHtml(color.name)}"
+             tabindex="0">
+          <div class="ss-color-image">
+            ${color.image
+              ? `<img src="${color.image}" alt="${escapeHtml(color.name)}" loading="lazy">`
+              : `<div class="ss-no-image">No Image</div>`
+            }
+          </div>
+          <div class="ss-color-name">${escapeHtml(color.name)}</div>
         </div>
-        <div class="ss-summary-item">
-          <div class="ss-summary-value" id="ss-total-variants">0</div>
-          <div class="ss-summary-label">Variants</div>
+      `;
+    });
+
+    html += `
         </div>
       </div>
     `;
 
-    // Add to cart button
+    // Size quantity inputs - one section per color (hidden by default except first)
+    colors.forEach((color, index) => {
+      const isFirst = index === 0;
+      html += `
+        <div class="ss-sizes-section ${isFirst ? '' : 'ss-hidden'}" data-color-section="${escapeHtml(color.name)}">
+          <div class="ss-section-title">Sizes</div>
+          <div class="ss-sizes-grid">
+      `;
+
+      sizes.forEach(sizeName => {
+        const sizeData = color.sizes.get(sizeName);
+        if (!sizeData) {
+          html += `
+            <div class="ss-size-card ss-size-unavailable">
+              <div class="ss-size-name">${escapeHtml(sizeName)}</div>
+              <div class="ss-size-stock">N/A</div>
+            </div>
+          `;
+          return;
+        }
+
+        const stockClass = getStockClass(sizeData.stock);
+        const isDisabled = sizeData.stock === 0;
+
+        html += `
+          <div class="ss-size-card ${isDisabled ? 'ss-size-out' : ''}">
+            <input type="number"
+                   class="ss-size-input ${isDisabled ? 'ss-disabled' : ''}"
+                   min="0"
+                   max="${sizeData.stock}"
+                   value=""
+                   placeholder="0"
+                   data-variant-id="${sizeData.variant.id}"
+                   data-color="${escapeHtml(color.name)}"
+                   data-size="${escapeHtml(sizeName)}"
+                   data-max-stock="${sizeData.stock}"
+                   data-price="${sizeData.price}"
+                   ${isDisabled ? 'disabled' : ''}>
+            <div class="ss-size-name">${escapeHtml(sizeName)}</div>
+            <div class="ss-size-stock ${stockClass}">${formatStock(sizeData.stock)}</div>
+            ${sizeData.price > 0 ? `<div class="ss-size-price">$${sizeData.price.toFixed(2)}</div>` : ''}
+            ${showWarehouse ? renderWarehouseDetails(sizeData.warehouses) : ''}
+          </div>
+        `;
+      });
+
+      html += `
+          </div>
+        </div>
+      `;
+    });
+
+    // Summary and add to cart
     html += `
+      <div class="ss-order-summary">
+        <div class="ss-summary-row">
+          <span class="ss-summary-label">Selected Items</span>
+          <span class="ss-summary-value" id="ss-total-items">0</span>
+        </div>
+        <div class="ss-summary-row">
+          <span class="ss-summary-label">Estimated Total</span>
+          <span class="ss-summary-value ss-total-price" id="ss-total-price">$0.00</span>
+        </div>
+      </div>
+
       <button class="ss-add-to-cart-btn" id="ss-add-to-cart-btn" disabled>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
@@ -152,137 +242,82 @@
     attachEventListeners(container);
   }
 
-  function renderExpandedMatrix(colors, sizes, colorSizeMap, showWarehouse) {
-    let html = '<div style="overflow-x: auto;"><table class="ss-matrix-table">';
-
-    // Header row with sizes
-    html += '<thead><tr><th>Color / Size</th>';
-    sizes.forEach(size => {
-      html += `<th style="text-align: center;">${size}</th>`;
-    });
-    html += '</tr></thead><tbody>';
-
-    // Rows for each color
-    colors.forEach(color => {
-      html += `<tr><td><strong>${color}</strong></td>`;
-
-      sizes.forEach(size => {
-        const data = colorSizeMap.get(color)?.get(size);
-
-        if (data) {
-          const stockBadgeClass = getStockClass(data.stock);
-          html += `
-            <td style="text-align: center;">
-              <span class="ss-stock-badge ${stockBadgeClass}">${formatStock(data.stock)}</span>
-              <br>
-              <input
-                type="number"
-                class="ss-qty-input"
-                min="0"
-                max="${data.stock}"
-                value=""
-                placeholder="0"
-                data-variant-id="${data.variant.id}"
-                data-max-stock="${data.stock}"
-                ${data.stock === 0 ? 'disabled' : ''}
-              >
-              ${showWarehouse ? renderWarehouseDetails(data.warehouses) : ''}
-            </td>
-          `;
-        } else {
-          html += '<td style="text-align: center; color: #999;">-</td>';
-        }
-      });
-
-      html += '</tr>';
-    });
-
-    html += '</tbody></table></div>';
-    return html;
-  }
-
-  function renderCompactList(variants, inventoryMap, showWarehouse) {
-    let html = '<table class="ss-matrix-table"><thead><tr>';
-    html += '<th>Variant</th><th>Stock</th><th style="text-align: center;">Quantity</th>';
-    html += '</tr></thead><tbody>';
-
-    variants.forEach(variant => {
-      const stockInfo = inventoryMap.get(variant.sku) || { total: 0, warehouses: {} };
-      const stock = stockInfo.total;
-      const stockBadgeClass = getStockClass(stock);
-
-      html += `
-        <tr>
-          <td>
-            <strong>${variant.title}</strong>
-            ${variant.sku ? `<br><small style="color: #666;">SKU: ${variant.sku}</small>` : ''}
-          </td>
-          <td>
-            <span class="ss-stock-badge ${stockBadgeClass}">${formatStock(stock)}</span>
-            ${showWarehouse ? renderWarehouseDetails(stockInfo.warehouses) : ''}
-          </td>
-          <td style="text-align: center;">
-            <input
-              type="number"
-              class="ss-qty-input"
-              min="0"
-              max="${stock}"
-              value=""
-              placeholder="0"
-              data-variant-id="${variant.id}"
-              data-max-stock="${stock}"
-              ${stock === 0 ? 'disabled' : ''}
-            >
-          </td>
-        </tr>
-      `;
-    });
-
-    html += '</tbody></table>';
-    return html;
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   }
 
   function renderWarehouseDetails(warehouses) {
     const entries = Object.entries(warehouses).filter(([_, qty]) => qty > 0);
     if (entries.length === 0) return '';
 
-    const details = entries.map(([abbr, qty]) => `${abbr}: ${qty}`).join(', ');
+    const details = entries.slice(0, 3).map(([abbr, qty]) => `${abbr}: ${qty}`).join(', ');
     return `<div class="ss-warehouse-details">${details}</div>`;
   }
 
   function getStockClass(stock) {
-    if (stock === 0) return 'ss-stock-none';
+    if (stock === 0) return 'ss-stock-out';
     if (stock < 50) return 'ss-stock-low';
     if (stock < 500) return 'ss-stock-medium';
     return 'ss-stock-high';
   }
 
   function formatStock(qty) {
-    if (qty === 0) return 'Out of Stock';
+    if (qty === 0) return 'Out';
     if (qty >= 1000) return `${(qty / 1000).toFixed(1)}K`;
     return qty.toString();
   }
 
   function attachEventListeners(container) {
-    const inputs = container.querySelectorAll('.ss-qty-input');
+    const colorCards = container.querySelectorAll('.ss-color-card');
+    const inputs = container.querySelectorAll('.ss-size-input');
     const addToCartBtn = container.querySelector('#ss-add-to-cart-btn');
     const totalItemsEl = container.querySelector('#ss-total-items');
-    const totalVariantsEl = container.querySelector('#ss-total-variants');
+    const totalPriceEl = container.querySelector('#ss-total-price');
 
+    // Color selection
+    colorCards.forEach(card => {
+      card.addEventListener('click', function() {
+        const selectedColor = this.dataset.color;
+
+        // Update card selection
+        colorCards.forEach(c => c.classList.remove('ss-color-selected'));
+        this.classList.add('ss-color-selected');
+
+        // Show corresponding size section
+        container.querySelectorAll('.ss-sizes-section').forEach(section => {
+          section.classList.add('ss-hidden');
+        });
+        const targetSection = container.querySelector(`[data-color-section="${selectedColor}"]`);
+        if (targetSection) targetSection.classList.remove('ss-hidden');
+      });
+
+      // Keyboard accessibility
+      card.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          this.click();
+        }
+      });
+    });
+
+    // Quantity input handlers
     function updateSummary() {
       let totalItems = 0;
-      let totalVariants = 0;
+      let totalPrice = 0;
 
       inputs.forEach(input => {
         const qty = parseInt(input.value) || 0;
+        const price = parseFloat(input.dataset.price) || 0;
         if (qty > 0) {
           totalItems += qty;
-          totalVariants++;
+          totalPrice += qty * price;
         }
       });
 
       totalItemsEl.textContent = totalItems;
-      totalVariantsEl.textContent = totalVariants;
+      totalPriceEl.textContent = `$${totalPrice.toFixed(2)}`;
       addToCartBtn.disabled = totalItems === 0;
     }
 
@@ -300,8 +335,16 @@
 
         updateSummary();
       });
+
+      // Clear placeholder on focus
+      input.addEventListener('focus', function() {
+        if (this.value === '0' || this.value === '') {
+          this.value = '';
+        }
+      });
     });
 
+    // Add to cart
     addToCartBtn.addEventListener('click', async function() {
       const items = [];
 
@@ -318,7 +361,7 @@
       if (items.length === 0) return;
 
       addToCartBtn.disabled = true;
-      addToCartBtn.innerHTML = '<span class="ss-loading-spinner" style="width:20px;height:20px;border-width:2px;"></span> Adding...';
+      addToCartBtn.innerHTML = '<span class="ss-btn-spinner"></span> Adding...';
 
       try {
         const response = await fetch(window.Shopify.routes.root + 'cart/add.js', {
@@ -328,7 +371,8 @@
         });
 
         if (response.ok) {
-          showSuccessToast(`Added ${items.reduce((sum, i) => sum + i.quantity, 0)} items to cart!`);
+          const totalQty = items.reduce((sum, i) => sum + i.quantity, 0);
+          showSuccessToast(`Added ${totalQty} items to cart!`);
 
           // Clear inputs
           inputs.forEach(input => {
@@ -336,7 +380,7 @@
           });
           updateSummary();
 
-          // Redirect to cart after a short delay
+          // Redirect to cart
           setTimeout(() => {
             window.location.href = '/cart';
           }, 1500);
@@ -345,7 +389,7 @@
         }
       } catch (error) {
         console.error('Add to cart error:', error);
-        alert('Failed to add items to cart. Please try again.');
+        showErrorToast('Failed to add items. Please try again.');
       } finally {
         addToCartBtn.disabled = false;
         addToCartBtn.innerHTML = `
@@ -353,25 +397,38 @@
             <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
             <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
           </svg>
-          ${addToCartBtn.closest('[data-button-text]')?.dataset.buttonText || 'Add Selected to Cart'}
+          Add Selected to Cart
         `;
+        updateSummary();
       }
     });
   }
 
   function showSuccessToast(message) {
+    showToast(message, 'success');
+  }
+
+  function showErrorToast(message) {
+    showToast(message, 'error');
+  }
+
+  function showToast(message, type) {
+    const existing = document.querySelector('.ss-toast');
+    if (existing) existing.remove();
+
     const toast = document.createElement('div');
-    toast.className = 'ss-success-toast';
+    toast.className = `ss-toast ss-toast-${type}`;
     toast.innerHTML = `
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle;margin-right:8px;">
-        <polyline points="20 6 9 17 4 12"/>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        ${type === 'success'
+          ? '<polyline points="20 6 9 17 4 12"/>'
+          : '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'
+        }
       </svg>
       ${message}
     `;
     document.body.appendChild(toast);
 
-    setTimeout(() => {
-      toast.remove();
-    }, 3000);
+    setTimeout(() => toast.remove(), 3000);
   }
 })();
