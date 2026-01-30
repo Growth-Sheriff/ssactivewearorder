@@ -43,7 +43,8 @@
   }
 
   async function fetchInventory(skus) {
-    const response = await fetch("/apps/ssactiveorder/api/graphql", {
+    // App Proxy endpoint - configured in shopify.app.toml
+    const response = await fetch("/apps/ssactiveorder", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
