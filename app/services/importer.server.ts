@@ -319,47 +319,152 @@ export class ImporterService {
   }
 
   private async addImages(admin: any, productId: string, style: any, colorImages: Map<string, string[]>): Promise<number> {
+    // Step 1: Upload all media and track color -> mediaId mapping
+    const colorMediaMap = new Map<string, string>(); // normalized color -> first media id
     const allMedia: any[] = [];
     const addedUrls = new Set<string>();
+    const urlToColor = new Map<string, string>(); // url -> normalized color
 
+    // Main style image first
     if (style.styleImage) {
       const url = this.fullUrl(style.styleImage);
       allMedia.push({ originalSource: url, alt: style.title, mediaContentType: "IMAGE" });
       addedUrls.add(url);
     }
 
-    for (const [, images] of colorImages) {
+    // Color images - track which URL belongs to which color
+    for (const [colorKey, images] of colorImages) {
       if (allMedia.length >= MAX_IMAGES) break;
       for (const url of images) {
         if (allMedia.length >= MAX_IMAGES) break;
         if (url && !addedUrls.has(url)) {
-          allMedia.push({ originalSource: url, alt: style.title, mediaContentType: "IMAGE" });
+          allMedia.push({ originalSource: url, alt: `${style.title} - ${colorKey}`, mediaContentType: "IMAGE" });
           addedUrls.add(url);
+          if (!urlToColor.has(url)) {
+            urlToColor.set(url, colorKey);
+          }
         }
       }
     }
 
     if (allMedia.length === 0) return 0;
 
-    let totalAdded = 0;
+    // Upload media in batches and collect media IDs
+    const uploadedMedia: Array<{ id: string; alt: string }> = [];
     for (let i = 0; i < allMedia.length; i += 10) {
       const batch = allMedia.slice(i, i + 10);
       try {
         const response = await admin.graphql(`
           mutation addMedia($productId: ID!, $media: [CreateMediaInput!]!) {
             productCreateMedia(productId: $productId, media: $media) {
-              media { ... on MediaImage { id } }
+              media {
+                ... on MediaImage {
+                  id
+                  alt
+                  image { url }
+                }
+              }
             }
           }
         `, { variables: { productId, media: batch } });
 
         const json = await response.json();
-        totalAdded += json.data?.productCreateMedia?.media?.length || 0;
+        const mediaItems = json.data?.productCreateMedia?.media || [];
+        for (const m of mediaItems) {
+          if (m?.id) {
+            uploadedMedia.push({ id: m.id, alt: m.alt || "" });
+          }
+        }
         await this.delay(300);
       } catch (error) { /* continue */ }
     }
 
-    return totalAdded;
+    // Build colorKey -> mediaId map from alt text
+    for (const media of uploadedMedia) {
+      const altParts = media.alt.split(" - ");
+      if (altParts.length >= 2) {
+        const colorKey = altParts[altParts.length - 1].toLowerCase().trim();
+        if (!colorMediaMap.has(colorKey)) {
+          colorMediaMap.set(colorKey, media.id);
+        }
+      }
+    }
+
+    // Step 2: Attach media to variants by color
+    if (colorMediaMap.size > 0) {
+      await this.attachMediaToVariants(admin, productId, colorMediaMap);
+    }
+
+    return uploadedMedia.length;
+  }
+
+  private async attachMediaToVariants(admin: any, productId: string, colorMediaMap: Map<string, string>) {
+    // Get all variants with their color option
+    const variants: Array<{ id: string; color: string }> = [];
+    let cursor: string | null = null;
+
+    do {
+      const response = await admin.graphql(`
+        query($productId: ID!, $cursor: String) {
+          product(id: $productId) {
+            variants(first: 100, after: $cursor) {
+              edges {
+                node {
+                  id
+                  selectedOptions { name value }
+                }
+                cursor
+              }
+              pageInfo { hasNextPage }
+            }
+          }
+        }
+      `, { variables: { productId, cursor } });
+
+      const json = await response.json();
+      for (const edge of json.data?.product?.variants?.edges || []) {
+        const colorOption = edge.node.selectedOptions?.find((o: any) => o.name === "Color");
+        if (colorOption) {
+          variants.push({
+            id: edge.node.id,
+            color: colorOption.value.toLowerCase().trim()
+          });
+        }
+        cursor = edge.cursor;
+      }
+      if (!json.data?.product?.variants?.pageInfo?.hasNextPage) cursor = null;
+    } while (cursor);
+
+    // Update variants with their color's media
+    const variantsToUpdate: Array<{ id: string; mediaId: string }> = [];
+    for (const variant of variants) {
+      const mediaId = colorMediaMap.get(variant.color);
+      if (mediaId) {
+        variantsToUpdate.push({ id: variant.id, mediaId });
+      }
+    }
+
+    // Batch update variants with media
+    for (let i = 0; i < variantsToUpdate.length; i += 50) {
+      const batch = variantsToUpdate.slice(i, i + 50);
+      try {
+        await admin.graphql(`
+          mutation bulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+            productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+              userErrors { field message }
+            }
+          }
+        `, {
+          variables: {
+            productId,
+            variants: batch.map(v => ({ id: v.id, mediaId: v.mediaId })),
+          },
+        });
+        await this.delay(200);
+      } catch (error) { /* continue */ }
+    }
+
+    console.log(`[Importer] Attached media to ${variantsToUpdate.length} variants`);
   }
 
   private async updateInventory(admin: any, productId: string, products: any[]) {
