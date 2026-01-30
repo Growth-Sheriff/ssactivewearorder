@@ -469,14 +469,29 @@ export class ImporterService {
   }
 
   private async updateInventory(admin: any, productId: string, products: any[]) {
+    console.log(`[Importer] Updating inventory for ${products.length} variants...`);
+
     const locResponse = await admin.graphql(`query { locations(first: 1) { edges { node { id } } } }`);
     const locJson = await locResponse.json();
     const locationId = locJson.data?.locations?.edges?.[0]?.node?.id;
-    if (!locationId) return;
 
+    if (!locationId) {
+      console.log(`[Importer] ⚠️ No location found - skipping inventory update`);
+      return;
+    }
+    console.log(`[Importer] Location found: ${locationId}`);
+
+    // Build stock map from SSActiveWear products
     const stockMap = new Map<string, number>();
-    products.forEach(p => stockMap.set(p.sku, p.totalStock));
+    let totalStock = 0;
+    products.forEach(p => {
+      const qty = p.totalStock || 0;
+      stockMap.set(p.sku, qty);
+      totalStock += qty;
+    });
+    console.log(`[Importer] Stock map built: ${stockMap.size} SKUs, total: ${totalStock} units`);
 
+    // Get variants from Shopify
     const items: Array<{ inventoryItemId: string; quantity: number }> = [];
     let cursor: string | null = null;
 
@@ -503,12 +518,19 @@ export class ImporterService {
       if (!json.data?.product?.variants?.pageInfo?.hasNextPage) cursor = null;
     } while (cursor);
 
+    console.log(`[Importer] Found ${items.length} variants to update inventory`);
+
+    // Update inventory in batches
+    let updatedCount = 0;
     for (let i = 0; i < items.length; i += 20) {
       const batch = items.slice(i, i + 20);
       try {
-        await admin.graphql(`
+        const result = await admin.graphql(`
           mutation($input: InventorySetQuantitiesInput!) {
-            inventorySetQuantities(input: $input) { userErrors { message } }
+            inventorySetQuantities(input: $input) {
+              inventoryAdjustmentGroup { id }
+              userErrors { message field }
+            }
           }
         `, {
           variables: {
@@ -523,9 +545,20 @@ export class ImporterService {
             },
           },
         });
+
+        const resultJson = await result.json();
+        if (resultJson.data?.inventorySetQuantities?.userErrors?.length > 0) {
+          console.log(`[Importer] Inventory batch error:`, resultJson.data.inventorySetQuantities.userErrors[0].message);
+        } else {
+          updatedCount += batch.length;
+        }
         await this.delay(100);
-      } catch (error) { /* continue */ }
+      } catch (error) {
+        console.log(`[Importer] Inventory batch failed:`, error);
+      }
     }
+
+    console.log(`[Importer] ✅ Inventory updated: ${updatedCount}/${items.length} variants`);
   }
 
   private async publishProduct(admin: any, productId: string) {
