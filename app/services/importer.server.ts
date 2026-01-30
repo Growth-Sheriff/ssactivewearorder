@@ -410,38 +410,41 @@ export class ImporterService {
       }
 
       try {
+        console.log(`[Importer] Calling GraphQL for batch ${batchNum}...`);
+
         const response = await admin.graphql(mutation, {
           variables: { productId, variants },
         });
 
+        console.log(`[Importer] Response received for batch ${batchNum}`);
+
         const json = await response.json();
 
-        // Log full response for first batch
-        if (batchNum === 1) {
-          console.log(`[DEBUG] Full response:`, JSON.stringify(json, null, 2).slice(0, 2000));
-        }
+        console.log(`[Importer] JSON parsed for batch ${batchNum}`);
+
+        // Log response summary
+        const hasErrors = !!json.errors;
+        const userErrorCount = json.data?.productVariantsBulkCreate?.userErrors?.length || 0;
+        const variantCount = json.data?.productVariantsBulkCreate?.productVariants?.length || 0;
+        console.log(`[Importer] Batch ${batchNum} result: errors=${hasErrors}, userErrors=${userErrorCount}, variants=${variantCount}`);
 
         if (json.errors) {
-          console.error(`[Importer] Batch ${batchNum} GraphQL errors:`, JSON.stringify(json.errors));
-          // Continue with next batch
-        } else if (json.data?.productVariantsBulkCreate?.userErrors?.length > 0) {
+          console.error(`[Importer] GraphQL errors:`, JSON.stringify(json.errors).slice(0, 1000));
+        } else if (userErrorCount > 0) {
           const errors = json.data.productVariantsBulkCreate.userErrors;
-          console.error(`[Importer] Batch ${batchNum} userErrors:`, JSON.stringify(errors));
-          // Still count successful ones
-          const created = json.data.productVariantsBulkCreate.productVariants?.length || 0;
-          totalCreated += created;
+          console.error(`[Importer] User errors:`, JSON.stringify(errors.slice(0, 5)));
+          totalCreated += variantCount;
         } else {
-          const created = json.data?.productVariantsBulkCreate?.productVariants?.length || 0;
-          totalCreated += created;
-          console.log(`[Importer] Batch ${batchNum} success: ${created} variants`);
+          totalCreated += variantCount;
+          console.log(`[Importer] Batch ${batchNum} success: ${variantCount} variants`);
         }
 
-        // Rate limit protection - wait between batches
+        // Rate limit protection
         if (i + VARIANT_BATCH_SIZE < products.length) {
           await this.delay(500);
         }
       } catch (error: any) {
-        console.error(`[Importer] Batch ${batchNum} exception:`, error.message || error);
+        console.error(`[Importer] Batch ${batchNum} EXCEPTION:`, error?.message || String(error));
       }
     }
 
