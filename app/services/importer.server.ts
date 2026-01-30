@@ -406,11 +406,7 @@ export class ImporterService {
 
       // Debug: Log first batch to verify option values match
       if (batchNum === 1) {
-        console.log(`[DEBUG] First 3 variants:`, variants.slice(0, 3).map(v => ({
-          sku: v.sku,
-          color: v.optionValues[0].name,
-          size: v.optionValues[1].name,
-        })));
+        console.log(`[DEBUG] First 3 variants:`, JSON.stringify(variants.slice(0, 3), null, 2));
       }
 
       try {
@@ -420,14 +416,17 @@ export class ImporterService {
 
         const json = await response.json();
 
+        // Log full response for first batch
+        if (batchNum === 1) {
+          console.log(`[DEBUG] Full response:`, JSON.stringify(json, null, 2).slice(0, 2000));
+        }
+
         if (json.errors) {
-          console.error(`[Importer] Batch ${batchNum} GraphQL errors:`,
-            JSON.stringify(json.errors).slice(0, 500));
+          console.error(`[Importer] Batch ${batchNum} GraphQL errors:`, JSON.stringify(json.errors));
           // Continue with next batch
         } else if (json.data?.productVariantsBulkCreate?.userErrors?.length > 0) {
           const errors = json.data.productVariantsBulkCreate.userErrors;
-          console.error(`[Importer] Batch ${batchNum} userErrors (first 3):`,
-            JSON.stringify(errors.slice(0, 3)));
+          console.error(`[Importer] Batch ${batchNum} userErrors:`, JSON.stringify(errors));
           // Still count successful ones
           const created = json.data.productVariantsBulkCreate.productVariants?.length || 0;
           totalCreated += created;
@@ -442,7 +441,7 @@ export class ImporterService {
           await this.delay(500);
         }
       } catch (error: any) {
-        console.error(`[Importer] Batch ${batchNum} exception:`, error.message);
+        console.error(`[Importer] Batch ${batchNum} exception:`, error.message || error);
       }
     }
 
