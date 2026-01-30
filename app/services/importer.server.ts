@@ -441,7 +441,7 @@ export class ImporterService {
 
         if (userErrorCount > 0) {
           const errors = json.data.productVariantsBulkCreate.userErrors;
-          console.error(`[Importer] User errors:`, JSON.stringify(errors.slice(0, 5)));
+          console.log(`[Importer] !!! USER ERRORS:`, JSON.stringify(errors));
         }
 
         // Count created variants
