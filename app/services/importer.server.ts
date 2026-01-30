@@ -4,6 +4,9 @@ import { SSActiveWearClient, type SSProduct } from "./ssactivewear";
 const ssClient = new SSActiveWearClient();
 const MAX_VARIANTS = 2000;
 const MAX_IMAGES = 50;
+const PRODUCT_SET_MAX = 50;      // İlk batch için productSet
+const BULK_BATCH_SIZE = 50;     // Sonraki batch'ler için
+const BATCH_DELAY = 500;        // Rate limit koruması
 
 interface ImportResult {
   productMap: any;
@@ -17,7 +20,7 @@ export class ImporterService {
   async importStyle(admin: any, styleId: number): Promise<ImportResult> {
     console.log(`[Importer] Starting import for style ${styleId}`);
 
-    // 1. Fetch data from SSActiveWear
+    // 1. Fetch data
     const styleDetails = await ssClient.getStyleDetails(styleId);
     if (!styleDetails?.length) throw new Error(`Style ${styleId} not found`);
     const style = styleDetails[0];
@@ -31,23 +34,33 @@ export class ImporterService {
     const { normalizedProducts, uniqueColors, uniqueSizes, colorImages } = this.prepareData(products);
     console.log(`[Importer] ${uniqueColors.length} colors, ${uniqueSizes.length} sizes, ${normalizedProducts.length} variants`);
 
-    // 3. Create product with variants using productSet
-    const result = await this.createProductWithVariants(admin, style, normalizedProducts, uniqueColors, uniqueSizes);
-    const productId = result.productId;
-    const variantCount = result.variantCount;
+    // 3. Split: first batch for productSet, rest for bulk create
+    const firstBatch = normalizedProducts.slice(0, PRODUCT_SET_MAX);
+    const remainingBatches = normalizedProducts.slice(PRODUCT_SET_MAX);
 
-    console.log(`[Importer] Product created: ${productId}, Variants: ${variantCount}`);
+    // 4. Create product with first batch using productSet
+    const productId = await this.createProductWithFirstBatch(admin, style, firstBatch, uniqueColors, uniqueSizes);
+    console.log(`[Importer] Product created: ${productId} with ${firstBatch.length} initial variants`);
 
-    // 4. Add images
+    // 5. Add remaining variants in batches using productVariantsBulkCreate
+    let additionalCreated = 0;
+    if (remainingBatches.length > 0) {
+      additionalCreated = await this.addRemainingVariants(admin, productId, remainingBatches);
+      console.log(`[Importer] Added ${additionalCreated} additional variants`);
+    }
+
+    const variantCount = firstBatch.length + additionalCreated;
+
+    // 6. Add images
     const imageCount = await this.addImages(admin, productId, style, colorImages);
 
-    // 5. Update inventory
+    // 7. Update inventory
     await this.updateInventory(admin, productId, normalizedProducts);
 
-    // 6. Publish
+    // 8. Publish
     await this.publishProduct(admin, productId);
 
-    // 7. Save to DB
+    // 9. Save to DB
     const productMap = await prisma.productMap.create({
       data: {
         shopifyProductId: productId,
@@ -87,7 +100,6 @@ export class ImporterService {
       }
     });
 
-    // Sort sizes
     const sizeOrder = ['xxs', 'xs', 's', 'm', 'l', 'xl', '2xl', '3xl', '4xl', '5xl'];
     const sortedSizes = Array.from(sizeMap.entries()).sort((a, b) => {
       const aIdx = sizeOrder.indexOf(a[0]);
@@ -99,7 +111,6 @@ export class ImporterService {
     const uniqueColors = Array.from(colorMap.values());
     const uniqueSizes = sortedSizes.map(([, v]) => v);
 
-    // Deduplicate and normalize products
     const seenCombos = new Set<string>();
     const deduplicatedProducts: any[] = [];
 
@@ -120,26 +131,26 @@ export class ImporterService {
       });
     }
 
-    const normalizedProducts = deduplicatedProducts.slice(0, MAX_VARIANTS);
-    return { normalizedProducts, uniqueColors, uniqueSizes, colorImages };
+    return {
+      normalizedProducts: deduplicatedProducts.slice(0, MAX_VARIANTS),
+      uniqueColors,
+      uniqueSizes,
+      colorImages
+    };
   }
 
-  private async createProductWithVariants(
+  private async createProductWithFirstBatch(
     admin: any,
     style: any,
     products: any[],
     colors: string[],
     sizes: string[]
-  ): Promise<{ productId: string; variantCount: number }> {
-
-    // Build variants for productSet mutation
-    // ProductVariantSetInput has 'sku' as direct field!
+  ): Promise<string> {
+    // ProductVariantSetInput - sku is direct field
     const variants = products.map(p => ({
       sku: p.sku,
       price: (p.piecePrice || 0).toFixed(2),
-      compareAtPrice: p.mapPrice && p.mapPrice > (p.piecePrice || 0)
-        ? p.mapPrice.toFixed(2)
-        : undefined,
+      compareAtPrice: p.mapPrice && p.mapPrice > (p.piecePrice || 0) ? p.mapPrice.toFixed(2) : undefined,
       barcode: p.gtin || undefined,
       inventoryPolicy: "DENY",
       optionValues: [
@@ -148,101 +159,105 @@ export class ImporterService {
       ],
     }));
 
-    const mutation = `
+    const response = await admin.graphql(`
       mutation productSet($input: ProductSetInput!, $synchronous: Boolean!) {
         productSet(synchronous: $synchronous, input: $input) {
-          product {
-            id
-            variants(first: 1) {
-              nodes { id }
-            }
-          }
-          userErrors {
-            field
-            message
-            code
-          }
+          product { id }
+          userErrors { field message code }
         }
       }
-    `;
-
-    const input = {
-      title: style.title,
-      descriptionHtml: this.buildDescription(style, products),
-      vendor: style.brandName,
-      productType: style.baseCategory || "Apparel",
-      status: "DRAFT",
-      tags: [style.brandName, style.baseCategory, "SSActiveWear", `ss-${style.styleID}`].filter(Boolean),
-      productOptions: [
-        { name: "Color", position: 1, values: colors.map(c => ({ name: c })) },
-        { name: "Size", position: 2, values: sizes.map(s => ({ name: s })) },
-      ],
-      variants: variants,
-    };
-
-    const response = await admin.graphql(mutation, {
-      variables: { input, synchronous: true },
+    `, {
+      variables: {
+        synchronous: true,
+        input: {
+          title: style.title,
+          descriptionHtml: this.buildDescription(style, products),
+          vendor: style.brandName,
+          productType: style.baseCategory || "Apparel",
+          status: "DRAFT",
+          tags: [style.brandName, style.baseCategory, "SSActiveWear", `ss-${style.styleID}`].filter(Boolean),
+          productOptions: [
+            { name: "Color", position: 1, values: colors.map(c => ({ name: c })) },
+            { name: "Size", position: 2, values: sizes.map(s => ({ name: s })) },
+          ],
+          variants,
+        },
+      },
     });
 
     const json = await response.json();
 
-    if (json.errors) {
-      console.error(`[Importer] GraphQL errors:`, JSON.stringify(json.errors).slice(0, 500));
-      throw new Error(`productSet failed: GraphQL errors`);
+    if (json.errors?.length) {
+      throw new Error(`productSet GraphQL error: ${json.errors[0].message}`);
     }
 
     if (json.data?.productSet?.userErrors?.length > 0) {
-      const errors = json.data.productSet.userErrors;
-      console.error(`[Importer] userErrors:`, JSON.stringify(errors.slice(0, 5)));
-      throw new Error(`productSet failed: ${errors[0].message}`);
+      throw new Error(`productSet error: ${json.data.productSet.userErrors[0].message}`);
     }
 
     const productId = json.data?.productSet?.product?.id;
-    if (!productId) {
-      throw new Error("No product ID returned from productSet");
-    }
+    if (!productId) throw new Error("No product ID returned");
 
-    // Get actual variant count
-    const countResponse = await admin.graphql(`
-      query getVariantCount($id: ID!) {
-        product(id: $id) {
-          variantsCount { count }
-        }
-      }
-    `, { variables: { id: productId } });
-
-    const countJson = await countResponse.json();
-    const variantCount = countJson.data?.product?.variantsCount?.count || products.length;
-
-    return { productId, variantCount };
+    return productId;
   }
 
-  private async addImages(
-    admin: any,
-    productId: string,
-    style: any,
-    colorImages: Map<string, string[]>
-  ): Promise<number> {
-    const mutation = `
-      mutation addMedia($productId: ID!, $media: [CreateMediaInput!]!) {
-        productCreateMedia(productId: $productId, media: $media) {
-          media { ... on MediaImage { id } }
-          mediaUserErrors { message }
-        }
-      }
-    `;
+  private async addRemainingVariants(admin: any, productId: string, products: any[]): Promise<number> {
+    let totalCreated = 0;
 
+    for (let i = 0; i < products.length; i += BULK_BATCH_SIZE) {
+      const batch = products.slice(i, i + BULK_BATCH_SIZE);
+      const batchNum = Math.floor(i / BULK_BATCH_SIZE) + 1;
+
+      // ProductVariantsBulkInput - sku goes inside inventoryItem!
+      const variants = batch.map(p => ({
+        inventoryItem: { sku: p.sku, tracked: true },
+        price: (p.piecePrice || 0).toFixed(2),
+        compareAtPrice: p.mapPrice && p.mapPrice > (p.piecePrice || 0) ? p.mapPrice.toFixed(2) : undefined,
+        barcode: p.gtin || undefined,
+        inventoryPolicy: "DENY",
+        optionValues: [
+          { optionName: "Color", name: p.normalizedColor },
+          { optionName: "Size", name: p.normalizedSize },
+        ],
+      }));
+
+      try {
+        const response = await admin.graphql(`
+          mutation bulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+            productVariantsBulkCreate(productId: $productId, variants: $variants) {
+              productVariants { id }
+              userErrors { field message }
+            }
+          }
+        `, { variables: { productId, variants } });
+
+        const json = await response.json();
+        const created = json.data?.productVariantsBulkCreate?.productVariants?.length || 0;
+        totalCreated += created;
+
+        if (json.data?.productVariantsBulkCreate?.userErrors?.length > 0) {
+          console.log(`[Importer] Batch ${batchNum} userErrors:`, json.data.productVariantsBulkCreate.userErrors[0].message);
+        }
+
+        await this.delay(BATCH_DELAY);
+      } catch (err) {
+        console.log(`[Importer] Batch ${batchNum} failed:`, err instanceof Error ? err.message : err);
+      }
+    }
+
+    return totalCreated;
+  }
+
+  private async addImages(admin: any, productId: string, style: any, colorImages: Map<string, string[]>): Promise<number> {
     const allMedia: any[] = [];
     const addedUrls = new Set<string>();
 
-    // Main image first
     if (style.styleImage) {
       const url = this.fullUrl(style.styleImage);
       allMedia.push({ originalSource: url, alt: style.title, mediaContentType: "IMAGE" });
       addedUrls.add(url);
     }
 
-    // Color images
     for (const [, images] of colorImages) {
       if (allMedia.length >= MAX_IMAGES) break;
       for (const url of images) {
@@ -260,51 +275,48 @@ export class ImporterService {
     for (let i = 0; i < allMedia.length; i += 10) {
       const batch = allMedia.slice(i, i + 10);
       try {
-        const response = await admin.graphql(mutation, { variables: { productId, media: batch } });
+        const response = await admin.graphql(`
+          mutation addMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+            productCreateMedia(productId: $productId, media: $media) {
+              media { ... on MediaImage { id } }
+            }
+          }
+        `, { variables: { productId, media: batch } });
+
         const json = await response.json();
         totalAdded += json.data?.productCreateMedia?.media?.length || 0;
         await this.delay(300);
-      } catch (error) {
-        // Continue with other batches
-      }
+      } catch (error) { /* continue */ }
     }
 
     return totalAdded;
   }
 
   private async updateInventory(admin: any, productId: string, products: any[]) {
-    // Get location
     const locResponse = await admin.graphql(`query { locations(first: 1) { edges { node { id } } } }`);
     const locJson = await locResponse.json();
     const locationId = locJson.data?.locations?.edges?.[0]?.node?.id;
     if (!locationId) return;
 
-    // Build SKU -> stock map
     const stockMap = new Map<string, number>();
     products.forEach(p => stockMap.set(p.sku, p.totalStock));
 
-    // Get variants with inventory items
     const items: Array<{ inventoryItemId: string; quantity: number }> = [];
     let cursor: string | null = null;
 
     do {
-      const query = `
+      const response = await admin.graphql(`
         query($productId: ID!, $cursor: String) {
           product(id: $productId) {
             variants(first: 100, after: $cursor) {
-              edges {
-                node { sku inventoryItem { id } }
-                cursor
-              }
+              edges { node { sku inventoryItem { id } } cursor }
               pageInfo { hasNextPage }
             }
           }
         }
-      `;
+      `, { variables: { productId, cursor } });
 
-      const response = await admin.graphql(query, { variables: { productId, cursor } });
       const json = await response.json();
-
       for (const edge of json.data?.product?.variants?.edges || []) {
         const { sku, inventoryItem } = edge.node;
         if (sku && inventoryItem?.id && stockMap.has(sku)) {
@@ -312,11 +324,9 @@ export class ImporterService {
         }
         cursor = edge.cursor;
       }
-
       if (!json.data?.product?.variants?.pageInfo?.hasNextPage) cursor = null;
     } while (cursor);
 
-    // Update in batches
     for (let i = 0; i < items.length; i += 20) {
       const batch = items.slice(i, i + 20);
       try {
@@ -338,26 +348,22 @@ export class ImporterService {
           },
         });
         await this.delay(100);
-      } catch (error) {
-        // Continue
-      }
+      } catch (error) { /* continue */ }
     }
   }
 
   private async publishProduct(admin: any, productId: string) {
     try {
-      // Activate
       await admin.graphql(`
         mutation($input: ProductInput!) {
           productUpdate(input: $input) { userErrors { message } }
         }
       `, { variables: { input: { id: productId, status: "ACTIVE" } } });
 
-      // Publish to Online Store
       const pubResponse = await admin.graphql(`query { publications(first: 10) { edges { node { id name } } } }`);
       const pubJson = await pubResponse.json();
-
       const onlineStore = pubJson.data?.publications?.edges?.find((e: any) => e.node.name === "Online Store");
+
       if (onlineStore) {
         await admin.graphql(`
           mutation($id: ID!, $input: [PublicationInput!]!) {
@@ -365,41 +371,27 @@ export class ImporterService {
           }
         `, { variables: { id: productId, input: [{ publicationId: onlineStore.node.id }] } });
       }
-    } catch (error) {
-      // Non-critical
-    }
+    } catch (error) { /* non-critical */ }
   }
 
   private buildDescription(style: any, products: any[]): string {
-    const uniqueColors = [...new Set(products.map((p: any) => p.normalizedColor))];
-    const uniqueSizes = [...new Set(products.map((p: any) => p.normalizedSize))];
-    const prices = products.filter((p: any) => p.piecePrice > 0).map((p: any) => p.piecePrice);
-    const minPrice = prices.length ? Math.min(...prices).toFixed(2) : "0.00";
-    const maxPrice = prices.length ? Math.max(...prices).toFixed(2) : "0.00";
-
-    return `
-<div class="product-description">
+    return `<div class="product-description">
   ${style.description || ""}
   <h4>Product Details</h4>
   <ul>
     <li><strong>Brand:</strong> ${style.brandName}</li>
     <li><strong>Style:</strong> ${style.partNumber}</li>
-    <li><strong>Colors:</strong> ${uniqueColors.length} options</li>
-    <li><strong>Sizes:</strong> ${uniqueSizes.join(", ")}</li>
-    <li><strong>Price:</strong> $${minPrice} - $${maxPrice}</li>
   </ul>
 </div>`.trim();
   }
 
   private normalize(value: string): string {
-    if (!value) return "";
-    return value.trim().toLowerCase().replace(/\s+/g, " ");
+    return value ? value.trim().toLowerCase().replace(/\s+/g, " ") : "";
   }
 
   private fullUrl(path: string): string {
     if (!path) return "";
-    if (path.startsWith("http")) return path;
-    return `https://www.ssactivewear.com/${path}`;
+    return path.startsWith("http") ? path : `https://www.ssactivewear.com/${path}`;
   }
 
   private delay(ms: number): Promise<void> {
