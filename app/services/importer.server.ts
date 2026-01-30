@@ -278,9 +278,9 @@ export class ImporterService {
       const batch = products.slice(i, i + BULK_BATCH_SIZE);
       const batchNum = Math.floor(i / BULK_BATCH_SIZE) + 1;
 
-      // ProductVariantsBulkInput - sku is at variant level
+      // ProductVariantsBulkInput - sku MUST be inside inventoryItem (per Shopify 2025-10 docs)
       const variants = batch.map(p => ({
-        sku: p.sku,
+        inventoryItem: { sku: p.sku },
         price: (p.piecePrice || 0).toFixed(2),
         compareAtPrice: p.mapPrice && p.mapPrice > (p.piecePrice || 0) ? p.mapPrice.toFixed(2) : undefined,
         barcode: p.gtin || undefined,
