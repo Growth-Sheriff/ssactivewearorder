@@ -26,29 +26,16 @@
     console.log('[SS Widget] Initializing for product:', productId);
     console.log('[SS Widget] Variants count:', variants.length);
 
-    // Check if this product was imported from SSActiveWear (optional - just log)
-    if (productId) {
-      try {
-        const importStatus = await checkProductImported(productId);
-        console.log('[SS Widget] Import status:', importStatus);
-        if (!importStatus.imported) {
-          console.log('[SS Widget] Product not imported, hiding widget');
-          container.style.display = 'none';
-          return;
-        }
-      } catch (error) {
-        console.log('[SS Widget] Import check error, showing widget anyway:', error);
-      }
-    }
+    // Skip import check - show widget for all products with SKUs
+    // The widget will work for any product that has variant SKUs
 
     const skus = variants.map(v => v.sku).filter(s => s && s.trim());
     console.log('[SS Widget] SKUs found:', skus.length);
 
     if (skus.length === 0) {
-      // No SKUs - show message instead of hiding
-      loadingEl.style.display = 'none';
-      errorEl.innerHTML = '<p>This product has no SKUs configured. Please ensure variants have SKU values.</p>';
-      errorEl.style.display = 'block';
+      // No SKUs - hide widget silently
+      console.log('[SS Widget] No SKUs found, hiding widget');
+      container.style.display = 'none';
       return;
     }
 
