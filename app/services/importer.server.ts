@@ -370,7 +370,7 @@ export class ImporterService {
         productVariantsBulkCreate(productId: $productId, variants: $variants, strategy: $strategy) {
           productVariants {
             id
-            sku
+            title
           }
           userErrors {
             field
@@ -390,27 +390,33 @@ export class ImporterService {
 
       console.log(`[Importer] Batch ${batchNum}/${totalBatches}: ${batch.length} variants`);
 
+      // Build variants with CORRECT ProductVariantsBulkInput format
       const variants = batch.map(p => ({
-        sku: p.sku,
+        // SKU goes inside inventoryItem, NOT at root level
+        inventoryItem: {
+          sku: p.sku,
+          tracked: true,
+        },
         price: (p.piecePrice || 0).toFixed(2),
         compareAtPrice: p.mapPrice && p.mapPrice > (p.piecePrice || 0)
           ? p.mapPrice.toFixed(2)
           : undefined,
         barcode: p.gtin || undefined,
         inventoryPolicy: "DENY",
+        // optionValues format: { name: "value", optionName: "Option Name" }
         optionValues: [
           { optionName: "Color", name: p.normalizedColor },
           { optionName: "Size", name: p.normalizedSize },
         ],
       }));
 
-      // Debug: Log first batch to verify option values match
+      // Debug: Log first batch to verify format
       if (batchNum === 1) {
-        console.log(`[DEBUG] First 3 variants:`, JSON.stringify(variants.slice(0, 3), null, 2));
+        console.log(`[DEBUG] First variant structure:`, JSON.stringify(variants[0], null, 2));
       }
 
       try {
-        console.log(`[Importer] Calling GraphQL...`);
+        console.log(`[Importer] Sending GraphQL request...`);
 
         const response = await admin.graphql(mutation, {
           variables: {
@@ -420,35 +426,29 @@ export class ImporterService {
           },
         });
 
-        console.log(`[Importer] Got response, parsing JSON...`);
-
         const json = await response.json();
 
-        console.log(`[Importer] JSON parsed`);
+        // Log response details
+        const hasErrors = !!json.errors;
+        const userErrorCount = json.data?.productVariantsBulkCreate?.userErrors?.length || 0;
+        const variantCount = json.data?.productVariantsBulkCreate?.productVariants?.length || 0;
 
-        // Log full response for first batch
-        if (batchNum === 1) {
-          console.log(`[DEBUG] Response keys:`, Object.keys(json));
-          if (json.data?.productVariantsBulkCreate) {
-            console.log(`[DEBUG] userErrors count:`, json.data.productVariantsBulkCreate.userErrors?.length || 0);
-            console.log(`[DEBUG] variants count:`, json.data.productVariantsBulkCreate.productVariants?.length || 0);
-          }
-          if (json.errors) {
-            console.log(`[DEBUG] GraphQL errors:`, JSON.stringify(json.errors).slice(0, 500));
-          }
-        }
+        console.log(`[Importer] Batch ${batchNum} response: errors=${hasErrors}, userErrors=${userErrorCount}, created=${variantCount}`);
 
         if (json.errors) {
-          console.error(`[Importer] GraphQL errors:`, JSON.stringify(json.errors).slice(0, 1000));
-        } else if (json.data?.productVariantsBulkCreate?.userErrors?.length > 0) {
+          console.error(`[Importer] GraphQL errors:`, JSON.stringify(json.errors).slice(0, 1500));
+        }
+
+        if (userErrorCount > 0) {
           const errors = json.data.productVariantsBulkCreate.userErrors;
-          console.error(`[Importer] userErrors:`, JSON.stringify(errors.slice(0, 3)));
-          const created = json.data.productVariantsBulkCreate.productVariants?.length || 0;
-          totalCreated += created;
-        } else {
-          const created = json.data?.productVariantsBulkCreate?.productVariants?.length || 0;
-          totalCreated += created;
-          console.log(`[Importer] Batch ${batchNum} success: ${created} variants`);
+          console.error(`[Importer] User errors:`, JSON.stringify(errors.slice(0, 5)));
+        }
+
+        // Count created variants
+        totalCreated += variantCount;
+
+        if (variantCount > 0) {
+          console.log(`[Importer] ✅ Batch ${batchNum} success: ${variantCount} variants created`);
         }
 
         // Rate limit protection
@@ -456,14 +456,13 @@ export class ImporterService {
           await this.delay(500);
         }
       } catch (err) {
-        // Safely log error - using console.log because PM2 might buffer console.error differently
         const errMsg = err instanceof Error ? err.message : String(err);
-        console.log(`[Importer] !!! EXCEPTION in batch ${batchNum}: ${errMsg}`);
+        console.error(`[Importer] !!! EXCEPTION in batch ${batchNum}: ${errMsg}`);
       }
     }
 
     if (totalCreated === 0) {
-      console.error(`[Importer] WARNING: No variants created! Check option values match.`);
+      console.error(`[Importer] ⚠️ WARNING: No variants created!`);
     }
 
     return totalCreated;
