@@ -39,8 +39,8 @@ export class ImporterService {
     const remainingBatches = normalizedProducts.slice(PRODUCT_SET_MAX);
 
     // 4. Create product with first batch using productSet
-    const productId = await this.createProductWithFirstBatch(admin, style, firstBatch, uniqueColors, uniqueSizes);
-    console.log(`[Importer] Product created: ${productId} with ${firstBatch.length} initial variants`);
+    const { productId, createdCount: initialCreated } = await this.createProductWithFirstBatch(admin, style, firstBatch, uniqueColors, uniqueSizes);
+    console.log(`[Importer] Product created: ${productId} with ${initialCreated}/${firstBatch.length} initial variants`);
 
     // 5. Add remaining variants in batches using productVariantsBulkCreate
     let additionalCreated = 0;
@@ -49,7 +49,7 @@ export class ImporterService {
       console.log(`[Importer] Added ${additionalCreated} additional variants`);
     }
 
-    const variantCount = firstBatch.length + additionalCreated;
+    const variantCount = initialCreated + additionalCreated;
 
     // 6. Add images
     const imageCount = await this.addImages(admin, productId, style, colorImages);
@@ -145,7 +145,7 @@ export class ImporterService {
     products: any[],
     colors: string[],
     sizes: string[]
-  ): Promise<string> {
+  ): Promise<{ productId: string; createdCount: number }> {
     // ProductVariantSetInput - sku is direct field
     const variants = products.map(p => ({
       sku: p.sku,
@@ -162,7 +162,10 @@ export class ImporterService {
     const response = await admin.graphql(`
       mutation productSet($input: ProductSetInput!, $synchronous: Boolean!) {
         productSet(synchronous: $synchronous, input: $input) {
-          product { id }
+          product {
+            id
+            variantsCount { count }
+          }
           userErrors { field message code }
         }
       }
@@ -198,7 +201,10 @@ export class ImporterService {
     const productId = json.data?.productSet?.product?.id;
     if (!productId) throw new Error("No product ID returned");
 
-    return productId;
+    // Get actual created variant count from API response
+    const createdCount = json.data?.productSet?.product?.variantsCount?.count || products.length;
+
+    return { productId, createdCount };
   }
 
   private async addRemainingVariants(admin: any, productId: string, products: any[]): Promise<number> {
