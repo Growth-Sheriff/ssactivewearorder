@@ -159,8 +159,35 @@ export class ImporterService {
       sizeLookup.set(normalizedKey, displayValue);
     });
 
+    // Deduplicate by Color+Size combination (take first SKU for each combo)
+    // This prevents Shopify error: "Cannot create duplicate variant"
+    const seenCombos = new Set<string>();
+    const deduplicatedProducts: typeof products = [];
+
+    for (const p of products) {
+      const colorKey = this.normalize(p.colorName);
+      const sizeKey = this.normalize(p.sizeName);
+      const comboKey = `${colorKey}|${sizeKey}`;
+
+      // Skip empty values
+      if (!colorKey || !sizeKey) {
+        console.warn(`[Importer] Skipping SKU ${p.sku} - empty color or size`);
+        continue;
+      }
+
+      // Skip duplicates
+      if (seenCombos.has(comboKey)) {
+        continue; // Silently skip duplicate combos
+      }
+
+      seenCombos.add(comboKey);
+      deduplicatedProducts.push(p);
+    }
+
+    console.log(`[Importer] After dedup: ${deduplicatedProducts.length} unique combos (from ${products.length} SKUs)`);
+
     // Normalize products - USE THE SAME VALUES AS OPTIONS
-    const normalizedProducts = products.slice(0, MAX_VARIANTS).map(p => {
+    const normalizedProducts = deduplicatedProducts.slice(0, MAX_VARIANTS).map(p => {
       const colorKey = this.normalize(p.colorName);
       const sizeKey = this.normalize(p.sizeName);
 
