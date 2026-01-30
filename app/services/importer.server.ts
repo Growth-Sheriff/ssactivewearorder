@@ -535,6 +535,7 @@ export class ImporterService {
         `, {
           variables: {
             input: {
+              ignoreCompareQuantity: true, // Required for Shopify 2025-10 API
               reason: "correction",
               name: "available",
               quantities: batch.map(item => ({
