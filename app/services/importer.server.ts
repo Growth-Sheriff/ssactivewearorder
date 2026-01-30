@@ -17,7 +17,7 @@ interface ImportResult {
 }
 
 export class ImporterService {
-  async importStyle(admin: any, styleId: number): Promise<ImportResult> {
+  async importStyle(admin: any, styleId: number, shop: string): Promise<ImportResult> {
     console.log(`[Importer] Starting import for style ${styleId}`);
 
     // 1. Fetch data
@@ -63,6 +63,7 @@ export class ImporterService {
     // 9. Save to DB
     const productMap = await prisma.productMap.create({
       data: {
+        shop,
         shopifyProductId: productId,
         ssStyleId: String(style.styleID),
       },

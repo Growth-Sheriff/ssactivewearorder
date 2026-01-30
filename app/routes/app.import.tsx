@@ -2,19 +2,19 @@ import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-r
 import { useActionData, useLoaderData, useNavigation, useSubmit } from "@remix-run/react";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import {
-    Badge,
-    Banner,
-    BlockStack,
-    Box,
-    Button,
-    Card,
-    Divider,
-    InlineStack,
-    Layout,
-    Page,
-    ProgressBar,
-    Text,
-    Thumbnail,
+  Badge,
+  Banner,
+  BlockStack,
+  Box,
+  Button,
+  Card,
+  Divider,
+  InlineStack,
+  Layout,
+  Page,
+  ProgressBar,
+  Text,
+  Thumbnail,
 } from "@shopify/polaris";
 import { useEffect } from "react";
 import { ImporterService } from "../services/importer.server";
@@ -61,7 +61,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
+  const shop = session.shop;
   const formData = await request.formData();
   const styleId = formData.get("styleId") as string;
 
@@ -71,7 +72,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
   const importer = new ImporterService();
   try {
-    const result = await importer.importStyle(admin, Number(styleId));
+    const result = await importer.importStyle(admin, Number(styleId), shop);
     return json<ActionData>({
       success: true,
       message: result?.message || `Successfully imported style ${styleId}`,
