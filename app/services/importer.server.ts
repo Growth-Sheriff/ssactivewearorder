@@ -57,13 +57,10 @@ export class ImporterService {
     // 7. Update inventory
     await this.updateInventory(admin, productId, normalizedProducts);
 
-    // 8. Update Metafields
-    await this.updateMetafields(admin, productId, style);
-
-    // 9. Publish
+    // 8. Publish
     await this.publishProduct(admin, productId);
 
-    // 10. Save to DB
+    // 9. Save to DB
     const productMap = await prisma.productMap.create({
       data: {
         shop,
@@ -157,8 +154,7 @@ export class ImporterService {
       compareAtPrice: p.mapPrice && p.mapPrice > (p.piecePrice || 0) ? p.mapPrice.toFixed(2) : undefined,
       barcode: p.gtin || undefined,
       inventoryPolicy: "DENY",
-      inventoryManagement: "SHOPIFY", // Required for inventory tracking
-      inventoryItem: { tracked: true },
+      inventoryItem: { tracked: true }, // Enable tracking
       optionValues: [
         { optionName: "Color", name: p.normalizedColor },
         { optionName: "Size", name: p.normalizedSize },
@@ -286,12 +282,11 @@ export class ImporterService {
 
       // ProductVariantsBulkInput - sku MUST be inside inventoryItem (per Shopify 2025-10 docs)
       const variants = batch.map(p => ({
-        inventoryItem: { sku: p.sku, tracked: true }, // Ensure tracked is true
+        inventoryItem: { sku: p.sku, tracked: true },
         price: (p.piecePrice || 0).toFixed(2),
         compareAtPrice: p.mapPrice && p.mapPrice > (p.piecePrice || 0) ? p.mapPrice.toFixed(2) : undefined,
         barcode: p.gtin || undefined,
         inventoryPolicy: "DENY",
-        // inventoryManagement: "SHOPIFY", // NOT available in BulkInput 2025-10
         optionValues: [
           { optionName: "Color", name: p.normalizedColor },
           { optionName: "Size", name: p.normalizedSize },
@@ -475,29 +470,14 @@ export class ImporterService {
   }
 
   private async updateInventory(admin: any, productId: string, products: any[]) {
-    console.log(`[Importer] Updating inventory for ${products.length} variants...`);
-
     const locResponse = await admin.graphql(`query { locations(first: 1) { edges { node { id } } } }`);
     const locJson = await locResponse.json();
     const locationId = locJson.data?.locations?.edges?.[0]?.node?.id;
+    if (!locationId) return;
 
-    if (!locationId) {
-      console.log(`[Importer] ⚠️ No location found - skipping inventory update`);
-      return;
-    }
-    console.log(`[Importer] Location found: ${locationId}`);
-
-    // Build stock map from SSActiveWear products
     const stockMap = new Map<string, number>();
-    let totalStock = 0;
-    products.forEach(p => {
-      const qty = p.totalStock || 0;
-      stockMap.set(p.sku, qty);
-      totalStock += qty;
-    });
-    console.log(`[Importer] Stock map built: ${stockMap.size} SKUs, total: ${totalStock} units`);
+    products.forEach(p => stockMap.set(p.sku, p.totalStock));
 
-    // Get variants from Shopify
     const items: Array<{ inventoryItemId: string; quantity: number }> = [];
     let cursor: string | null = null;
 
@@ -524,19 +504,12 @@ export class ImporterService {
       if (!json.data?.product?.variants?.pageInfo?.hasNextPage) cursor = null;
     } while (cursor);
 
-    console.log(`[Importer] Found ${items.length} variants to update inventory`);
-
-    // Update inventory in batches
-    let updatedCount = 0;
     for (let i = 0; i < items.length; i += 20) {
       const batch = items.slice(i, i + 20);
       try {
-        const result = await admin.graphql(`
+        await admin.graphql(`
           mutation($input: InventorySetQuantitiesInput!) {
-            inventorySetQuantities(input: $input) {
-              inventoryAdjustmentGroup { id }
-              userErrors { message field }
-            }
+            inventorySetQuantities(input: $input) { userErrors { message } }
           }
         `, {
           variables: {
@@ -552,46 +525,8 @@ export class ImporterService {
             },
           },
         });
-
-        const resultJson = await result.json();
-        if (resultJson.data?.inventorySetQuantities?.userErrors?.length > 0) {
-          console.log(`[Importer] Inventory batch error:`, resultJson.data.inventorySetQuantities.userErrors[0].message);
-        } else {
-          updatedCount += batch.length;
-        }
         await this.delay(100);
-      } catch (error) {
-        console.log(`[Importer] Inventory batch failed:`, error);
-      }
-    }
-
-    console.log(`[Importer] ✅ Inventory updated: ${updatedCount}/${items.length} variants`);
-  }
-
-  private async updateMetafields(admin: any, productId: string, style: any) {
-    console.log(`[Importer] Updating metafields...`);
-    const metafields = [
-      { namespace: "custom", key: "brand", value: style.brandName, type: "single_line_text_field" },
-      { namespace: "custom", key: "style_code", value: style.partNumber, type: "single_line_text_field" },
-      { namespace: "custom", key: "base_category", value: style.baseCategory || "Apparel", type: "single_line_text_field" },
-    ];
-
-    try {
-      await admin.graphql(`
-        mutation($id: ID!, $metafields: [MetafieldsSetInput!]!) {
-          metafieldsSet(metafields: $metafields) {
-            userErrors { field message }
-          }
-        }
-      `, {
-        variables: {
-          id: productId,
-          metafields: metafields.map(m => ({ ownerId: productId, ...m })),
-        },
-      });
-      console.log(`[Importer] ✅ Metafields updated`);
-    } catch (error) {
-      console.log(`[Importer] ⚠️ Metafield update failed:`, error);
+      } catch (error) { /* continue */ }
     }
   }
 
