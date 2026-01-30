@@ -208,9 +208,9 @@ export class ImporterService {
       const batch = products.slice(i, i + BULK_BATCH_SIZE);
       const batchNum = Math.floor(i / BULK_BATCH_SIZE) + 1;
 
-      // ProductVariantsBulkInput - sku goes inside inventoryItem!
+      // ProductVariantsBulkInput - sku is at variant level
       const variants = batch.map(p => ({
-        inventoryItem: { sku: p.sku, tracked: true },
+        sku: p.sku,
         price: (p.piecePrice || 0).toFixed(2),
         compareAtPrice: p.mapPrice && p.mapPrice > (p.piecePrice || 0) ? p.mapPrice.toFixed(2) : undefined,
         barcode: p.gtin || undefined,
