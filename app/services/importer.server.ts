@@ -154,6 +154,8 @@ export class ImporterService {
       compareAtPrice: p.mapPrice && p.mapPrice > (p.piecePrice || 0) ? p.mapPrice.toFixed(2) : undefined,
       barcode: p.gtin || undefined,
       inventoryPolicy: "DENY",
+      inventoryManagement: "SHOPIFY", // Required for inventory tracking
+      inventoryItem: { tracked: true },
       optionValues: [
         { optionName: "Color", name: p.normalizedColor },
         { optionName: "Size", name: p.normalizedSize },
@@ -281,11 +283,12 @@ export class ImporterService {
 
       // ProductVariantsBulkInput - sku MUST be inside inventoryItem (per Shopify 2025-10 docs)
       const variants = batch.map(p => ({
-        inventoryItem: { sku: p.sku },
+        inventoryItem: { sku: p.sku, tracked: true }, // Ensure tracked is true
         price: (p.piecePrice || 0).toFixed(2),
         compareAtPrice: p.mapPrice && p.mapPrice > (p.piecePrice || 0) ? p.mapPrice.toFixed(2) : undefined,
         barcode: p.gtin || undefined,
         inventoryPolicy: "DENY",
+        inventoryManagement: "SHOPIFY", // Required for inventory tracking
         optionValues: [
           { optionName: "Color", name: p.normalizedColor },
           { optionName: "Size", name: p.normalizedSize },
