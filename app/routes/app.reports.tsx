@@ -210,7 +210,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       monthlyData.push({
         month: monthKey,
         orders,
-        revenue: orders * 85, // Estimated avg order value - will be replaced when we have real data
+        revenue: 0, // Real revenue requires DailyStats (not yet populated)
       });
     }
   }
@@ -245,10 +245,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   prevPeriodRevenue = previousPeriodStats._sum.revenue || 0;
   prevPeriodOrders = previousPeriodStats._sum.ordersCount || 0;
 
-  // If no DailyStats, estimate revenue
-  if (totalRevenue === 0 && totalOrders > 0) {
-    totalRevenue = totalOrders * 85; // Estimated $85 per order
-  }
+  // If no DailyStats, show 0 revenue (no estimation)
+  // Revenue tracking requires DailyStats table to be populated
 
   const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 

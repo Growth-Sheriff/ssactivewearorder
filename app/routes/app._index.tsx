@@ -137,7 +137,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       weeklyStats.push({
         day: dayNames[date.getDay()],
         orders: ordersCount,
-        revenue: ordersCount * 85, // Estimated avg order value
+        revenue: 0, // Real revenue requires DailyStats table (not yet populated)
       });
     }
   }
