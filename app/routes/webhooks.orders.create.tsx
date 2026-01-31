@@ -47,11 +47,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (isSSOrder) {
     await prisma.orderJob.create({
       data: {
+        shop, // Required for dashboard filtering
         shopifyOrderId: gid,
+        shopifyOrderNumber: payload.order_number?.toString() || payload.name || null,
         status: "PENDING_APPROVAL",
       },
     });
-    console.log(`Order ${gid} queued for SSActiveWear approval.`);
+    console.log(`[Webhook] Order ${gid} (${payload.name}) queued for SSActiveWear approval.`);
   }
 
   return new Response();
