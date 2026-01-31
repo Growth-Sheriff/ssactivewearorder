@@ -2,19 +2,19 @@ import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-r
 import { useActionData, useLoaderData, useNavigation, useSubmit } from "@remix-run/react";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import {
-  Badge,
-  Banner,
-  BlockStack,
-  Box,
-  Button,
-  Card,
-  Divider,
-  InlineStack,
-  Layout,
-  Page,
-  ProgressBar,
-  Text,
-  Thumbnail,
+    Badge,
+    Banner,
+    BlockStack,
+    Box,
+    Button,
+    Card,
+    Divider,
+    InlineStack,
+    Layout,
+    Page,
+    ProgressBar,
+    Text,
+    Thumbnail,
 } from "@shopify/polaris";
 import { useEffect } from "react";
 import { ImporterService } from "../services/importer.server";
@@ -78,9 +78,23 @@ export async function action({ request }: ActionFunctionArgs) {
       message: result?.message || `Successfully imported style ${styleId}`,
       productId: result?.shopifyProduct?.id,
     });
-  } catch (error) {
-    console.error("Import failed:", error);
-    return json<ActionData>({ error: "Import failed. Please try again." });
+  } catch (error: any) {
+    const errorMessage = error?.message || "Unknown error occurred";
+    console.error("Import failed:", errorMessage);
+
+    // Provide user-friendly error messages
+    let userMessage = "Import failed. Please try again.";
+    if (errorMessage.includes("timeout")) {
+      userMessage = "Import timed out. The product may have too many variants. Please try again.";
+    } else if (errorMessage.includes("rate limit") || errorMessage.includes("429")) {
+      userMessage = "Rate limit reached. Please wait a moment and try again.";
+    } else if (errorMessage.includes("not found")) {
+      userMessage = "Product not found in SSActiveWear catalog.";
+    } else if (errorMessage.includes("permission") || errorMessage.includes("Access denied")) {
+      userMessage = "Permission error. Please check app permissions in Shopify.";
+    }
+
+    return json<ActionData>({ error: userMessage });
   }
 }
 

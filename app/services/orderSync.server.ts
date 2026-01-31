@@ -71,14 +71,14 @@ export class OrderSyncService {
             attn: `${order.shippingAddress.firstName} ${order.shippingAddress.lastName}`,
             address: order.shippingAddress.address1,
             city: order.shippingAddress.city,
-            state: order.shippingAddress.provinceCode || "IL", // Fallback needed? SS requires state
+            state: order.shippingAddress.provinceCode || "IL",
             zip: order.shippingAddress.zip,
-            residential: true // Assume residential usually for D2C
+            residential: true
         },
         lines: lines,
         poNumber: order.name,
-        shippingMethod: "1", // Default to Ground (1). TODO: Map via Settings.
-        testOrder: true // SAFETY FLAG
+        shippingMethod: process.env.SS_DEFAULT_SHIPPING || "1",
+        testOrder: process.env.SS_TEST_MODE === "true" // Controlled by env var (default: false in production)
     };
 
     // 4. Send to SS

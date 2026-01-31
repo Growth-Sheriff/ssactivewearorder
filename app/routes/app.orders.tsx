@@ -2,18 +2,18 @@ import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-r
 import { useActionData, useLoaderData, useNavigation, useSubmit } from "@remix-run/react";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import {
-  Badge,
-  Banner,
-  BlockStack,
-  Button,
-  Card,
-  EmptyState,
-  IndexTable,
-  InlineStack,
-  Layout,
-  Modal,
-  Page,
-  Text,
+    Badge,
+    Banner,
+    BlockStack,
+    Button,
+    Card,
+    EmptyState,
+    IndexTable,
+    InlineStack,
+    Layout,
+    Modal,
+    Page,
+    Text,
 } from "@shopify/polaris";
 import { useCallback, useEffect, useState } from "react";
 import prisma from "../db.server";
@@ -45,10 +45,12 @@ interface ActionData {
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
+  const shop = session.shop;
 
   const orders = await prisma.orderJob.findMany({
-    orderBy: { id: "desc" },
+    where: { shop }, // Filter by shop for multi-tenant security
+    orderBy: { createdAt: "desc" },
     take: 50,
   });
 
@@ -75,7 +77,7 @@ export async function action({ request }: ActionFunctionArgs) {
   if (actionType === "approve") {
     const syncService = new OrderSyncService();
     try {
-      await syncService.processOrder(orderId, admin as any);
+      await syncService.processOrder(admin as any, orderId); // Fixed parameter order
       return json<ActionData>({ success: true, message: `Order ${orderId} submitted to SSActiveWear` });
     } catch (error) {
       console.error("Order sync failed:", error);

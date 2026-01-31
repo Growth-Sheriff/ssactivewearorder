@@ -45,15 +45,45 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   if (isSSOrder) {
+    // Create OrderJob
     await prisma.orderJob.create({
       data: {
-        shop, // Required for dashboard filtering
+        shop,
         shopifyOrderId: gid,
         shopifyOrderNumber: payload.order_number?.toString() || payload.name || null,
         status: "PENDING_APPROVAL",
       },
     });
-    console.log(`[Webhook] Order ${gid} (${payload.name}) queued for SSActiveWear approval.`);
+
+    // Update DailyStats for analytics
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const orderTotal = parseFloat(payload.total_price || "0");
+    const itemCount = lineItems.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
+
+    await prisma.dailyStats.upsert({
+      where: {
+        shop_date: { shop, date: today },
+      },
+      update: {
+        ordersCount: { increment: 1 },
+        itemsSold: { increment: itemCount },
+        revenue: { increment: orderTotal },
+        ssOrdersCount: { increment: 1 },
+      },
+      create: {
+        shop,
+        date: today,
+        ordersCount: 1,
+        itemsSold: itemCount,
+        revenue: orderTotal,
+        ssOrdersCount: 1,
+        importedCount: 0,
+      },
+    });
+
+    console.log(`[Webhook] Order ${gid} (${payload.name}) queued + DailyStats updated`);
   }
 
   return new Response();
