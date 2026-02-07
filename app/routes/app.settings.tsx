@@ -20,8 +20,8 @@ import {
 import { CheckCircleIcon, XCircleIcon } from "@shopify/polaris-icons";
 import { useEffect, useState } from "react";
 import prisma from "../db.server";
+import { SSActiveWearClient } from "../services/ssactivewear";
 import { authenticate } from "../shopify.server";
-import { SSActiveWearClient } from "../ssactivewear.server";
 
 interface LoaderData {
   settings: {
