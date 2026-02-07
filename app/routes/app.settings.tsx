@@ -2,7 +2,6 @@ import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-r
 import { useActionData, useLoaderData, useNavigation, useSubmit } from "@remix-run/react";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import {
-    Banner,
     BlockStack,
     Box,
     Button,
@@ -10,8 +9,8 @@ import {
     Divider,
     FormLayout,
     Icon,
+    InlineGrid,
     InlineStack,
-    Layout,
     Page,
     Select,
     Text,
@@ -19,6 +18,7 @@ import {
 } from "@shopify/polaris";
 import { CheckCircleIcon, XCircleIcon } from "@shopify/polaris-icons";
 import { useCallback, useEffect, useState } from "react";
+import prisma from "../db.server";
 import { SSActiveWearClient } from "../services/ssactivewear";
 import { authenticate } from "../shopify.server";
 
@@ -49,10 +49,12 @@ interface LoaderData {
     message: string;
     categoryCount?: number;
   };
+  uploadLocations: any[];
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
+  const shop = session.shop;
 
   const ssUser = process.env.SSACTIVEWEAR_USER || "";
   const ssKey = process.env.SSACTIVEWEAR_KEY || "";
@@ -85,25 +87,135 @@ export async function loader({ request }: LoaderFunctionArgs) {
     r2BucketUrl: process.env.R2_PUBLIC_URL || "https://img-ssa-e.techifyboost.com",
   };
 
-  return json<LoaderData>({ settings, apiStatus });
+  const uploadLocations = await prisma.uploadLocation.findMany({
+    where: { shop },
+    orderBy: { sortOrder: 'asc' },
+  });
+
+  return json<LoaderData>({ settings, apiStatus, uploadLocations });
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
+  const shop = session.shop;
   const formData = await request.formData();
-  const actionType = formData.get("_action") as string;
+  const actionType = formData.get("action") as string;
 
-  if (actionType === "test_api") {
-    // Test API connection
-    return json({ success: true, message: "API connection test initiated" });
+  if (actionType === "save_upload_locations") {
+    const locationsJson = formData.get("locations") as string;
+    const locations = JSON.parse(locationsJson);
+
+    // Full sync - delete and recreation for simplicity in settings
+    await prisma.uploadLocation.deleteMany({ where: { shop } });
+
+    for (let i = 0; i < locations.length; i++) {
+      const loc = locations[i];
+      await prisma.uploadLocation.create({
+        data: {
+          shop,
+          name: loc.name || loc.label.toLowerCase().replace(/ /g, '_'),
+          label: loc.label,
+          iconType: loc.iconType,
+          sortOrder: i,
+        },
+      });
+    }
+
+    return json({ success: true, message: "Upload locations updated" });
   }
 
   // Save settings - in production, save to database
   return json({ success: true, message: "Settings saved successfully" });
 }
 
+function UploadLocationsCard({ initialLocations }: { initialLocations: any[] }) {
+  const [locations, setLocations] = useState(initialLocations.length > 0 ? initialLocations : [
+    { label: "Front", iconType: "front" },
+    { label: "Back", iconType: "back" }
+  ]);
+  const submit = useSubmit();
+  const nav = useNavigation();
+  const isSaving = nav.state === "submitting" && nav.formData?.get("action") === "save_upload_locations";
+
+  const updateLocation = (index: number, field: string, value: any) => {
+    const newLocs = [...locations];
+    newLocs[index][field] = value;
+    setLocations(newLocs);
+  };
+
+  const addLocation = () => {
+    setLocations([...locations, { label: "New Location", iconType: "custom" }]);
+  };
+
+  const removeLocation = (index: number) => {
+    const newLocs = locations.filter((_, i) => i !== index);
+    setLocations(newLocs);
+  };
+
+  const handleSave = () => {
+    const formData = new FormData();
+    formData.set("action", "save_upload_locations");
+    formData.set("locations", JSON.stringify(locations));
+    submit(formData, { method: "post" });
+  };
+
+  const iconOptions = [
+    { label: "Front (Ön)", value: "front" },
+    { label: "Back (Arka)", value: "back" },
+    { label: "Left Sleeve (Sol Kol)", value: "left_sleeve" },
+    { label: "Right Sleeve (Sağ Kol)", value: "right_sleeve" },
+    { label: "Logo / Patch (Arma)", value: "custom" },
+  ];
+
+  return (
+    <Card>
+      <BlockStack gap="400">
+        <InlineStack align="space-between">
+          <BlockStack gap="100">
+            <Text as="h2" variant="headingMd">Upload Locations</Text>
+            <Text as="p" variant="bodySm" tone="subdued">
+              Define the areas where customers can upload their designs (e.g., Front, Back, Left Sleeve).
+            </Text>
+          </BlockStack>
+          <Button onClick={addLocation} size="slim">Add Location</Button>
+        </InlineStack>
+        <Divider />
+
+        <BlockStack gap="400">
+          {locations.map((loc, index) => (
+            <Box key={index} background="bg-surface-secondary" padding="300" borderRadius="200">
+              <InlineGrid columns={['1fr', '1fr', 'auto']} gap="300">
+                <TextField
+                  label="Location Label"
+                  value={loc.label}
+                  onChange={(val) => updateLocation(index, "label", val)}
+                  autoComplete="off"
+                />
+                <Select
+                  label="Icon / Guide"
+                  options={iconOptions}
+                  value={loc.iconType}
+                  onChange={(val) => updateLocation(index, "iconType", val)}
+                  autoComplete="off"
+                />
+                <div style={{ alignSelf: 'end' }}>
+                  <Button variant="plain" tone="critical" onClick={() => removeLocation(index)}>Remove</Button>
+                </div>
+              </InlineGrid>
+            </Box>
+          ))}
+        </BlockStack>
+
+        <InlineStack align="end">
+          <Button variant="primary" onClick={handleSave} loading={isSaving}>Update Upload Locations</Button>
+        </InlineStack>
+      </BlockStack>
+    </Card>
+  );
+}
+
 export default function SettingsPage() {
-  const { settings, apiStatus } = useLoaderData<LoaderData>();
+  const { settings, apiStatus, uploadLocations } = useLoaderData<LoaderData>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const nav = useNavigation();
@@ -125,6 +237,7 @@ export default function SettingsPage() {
   const handleSave = useCallback(() => {
     submit(
       {
+        action: "save_general",
         ssUser,
         ssKey,
         defaultShipping,
@@ -135,7 +248,6 @@ export default function SettingsPage() {
   }, [ssUser, ssKey, defaultShipping, r2Url, submit]);
 
   const handleTestApi = useCallback(() => {
-    // Reload the page to re-test API
     window.location.reload();
   }, []);
 
@@ -209,17 +321,11 @@ export default function SettingsPage() {
                 helpText={settings.ssActivewearKeyConfigured ? "✓ API key is configured" : "Enter your API key"}
               />
             </FormLayout>
-            <Banner tone="info">
-              <p>
-                Get your API credentials from {" "}
-                <a href="https://www.ssactivewear.com" target="_blank" rel="noopener noreferrer">
-                  SSActiveWear website
-                </a>
-                {" → My Account → Account Settings. Your account number is your username."}
-              </p>
-            </Banner>
           </BlockStack>
         </Card>
+
+        {/* Upload Locations Configuration */}
+        <UploadLocationsCard initialLocations={uploadLocations} />
 
         {/* Shipping Settings */}
         <Card>
@@ -240,40 +346,6 @@ export default function SettingsPage() {
                 helpText="This shipping method will be used for all orders sent to SSActiveWear"
               />
             </FormLayout>
-
-            <Box
-              background="bg-surface-secondary"
-              padding="400"
-              borderRadius="200"
-            >
-              <BlockStack gap="200">
-                <Text as="h3" variant="headingSm">
-                  Shipping Method Reference
-                </Text>
-                <Layout>
-                  <Layout.Section variant="oneHalf">
-                    <BlockStack gap="100">
-                      <Text as="p" variant="bodySm">
-                        <strong>Ground (Economy):</strong>
-                      </Text>
-                      <Text as="p" variant="bodySm" tone="subdued">
-                        UPS Ground, FedEx Ground
-                      </Text>
-                    </BlockStack>
-                  </Layout.Section>
-                  <Layout.Section variant="oneHalf">
-                    <BlockStack gap="100">
-                      <Text as="p" variant="bodySm">
-                        <strong>Express (2-3 Days):</strong>
-                      </Text>
-                      <Text as="p" variant="bodySm" tone="subdued">
-                        UPS 3 Day, FedEx Express Saver
-                      </Text>
-                    </BlockStack>
-                  </Layout.Section>
-                </Layout>
-              </BlockStack>
-            </Box>
           </BlockStack>
         </Card>
 
@@ -300,28 +372,10 @@ export default function SettingsPage() {
           </BlockStack>
         </Card>
 
-        {/* Catalog Sync */}
-        <Card>
-          <BlockStack gap="400">
-            <Text as="h2" variant="headingMd">
-              Catalog Cache & Sync
-            </Text>
-            <Text as="p" variant="bodySm" tone="subdued">
-              Cache SSActiveWear catalog locally for faster browsing and reduced API calls.
-            </Text>
-            <Divider />
-            <InlineStack gap="300">
-              <Button url="/app/sync">
-                Manage Catalog Sync
-              </Button>
-            </InlineStack>
-          </BlockStack>
-        </Card>
-
         {/* Save Button */}
         <InlineStack align="end">
           <Button variant="primary" size="large" onClick={handleSave}>
-            Save Settings
+            Save All Settings
           </Button>
         </InlineStack>
       </BlockStack>

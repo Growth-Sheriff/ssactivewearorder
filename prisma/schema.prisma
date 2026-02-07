@@ -96,6 +96,7 @@ model SSStyleCache {
   baseCategory    String
   categories      String   // comma separated category IDs
   styleImage      String?
+  basePrice       Float    @default(0) // Added for bulk price
   sustainableStyle Boolean @default(false)
   productCount    Int      @default(0)
   updatedAt       DateTime @updatedAt
@@ -401,11 +402,17 @@ model CustomerTracking {
   @@index([customerEmail])
 }
 
-// 18. Quick Reorder Cart
-model ReorderCart {
-  id        String   @id @default(uuid())
-  shop      String   @unique
-  items     String   // JSON array of cart items
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// 20. Upload Locations
+model UploadLocation {
+  id           String   @id @default(uuid())
+  shop         String
+  name         String   // Machine name: 'front'
+  label        String   // Display name: 'Front'
+  iconType     String   @default("custom") // front, back, left_sleeve, right_sleeve, custom
+  sortOrder    Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([shop])
 }
