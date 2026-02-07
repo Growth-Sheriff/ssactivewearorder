@@ -37,50 +37,66 @@ type ActionData =
   | { success: false; message: string };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-  const shop = session.shop;
-
-  // Get imported products
-  const products = await prisma.productMap.findMany({
-    where: { shop },
-    select: {
-      id: true,
-      ssStyleId: true,
-      shopifyProductId: true,
-    },
-  });
-
-  // Get style details
-  const styleIds = products.map(p => parseInt(p.ssStyleId)).filter(id => !isNaN(id));
-  const styles = styleIds.length > 0 ? await prisma.sSStyleCache.findMany({
-    where: { styleId: { in: styleIds } },
-    select: { styleId: true, styleName: true, brandName: true, basePrice: true },
-  }) : [];
-
-  const styleMap = new Map(styles.map(s => [s.styleId.toString(), s]));
-  const brands = Array.from(new Set(styles.map(s => s.brandName))).filter(Boolean).sort();
-
-  let priceRulesCount = 0;
   try {
-    priceRulesCount = await prisma.priceRule.count({ where: { shop, isActive: true } });
-  } catch (e) {}
+    const { session } = await authenticate.admin(request);
+    const shop = session.shop;
 
-  return json({
-    productsCount: products.length,
-    products: products.slice(0, 50).map(p => {
-      const style = styleMap.get(p.ssStyleId);
-      return {
-        id: p.id,
-        ssStyleId: p.ssStyleId,
-        shopifyProductId: p.shopifyProductId,
-        styleName: style?.styleName || `Style ${p.ssStyleId}`,
-        brandName: style?.brandName || 'Unknown',
-        basePrice: (style as any)?.basePrice || 0,
-      };
-    }),
-    brands,
-    activePriceRulesCount: priceRulesCount,
-  });
+    // Get imported products
+    const products = await prisma.productMap.findMany({
+      where: { shop },
+      select: {
+        id: true,
+        ssStyleId: true,
+        shopifyProductId: true,
+      },
+    });
+
+    // Get style details
+    const styleIds = products.map(p => parseInt(p.ssStyleId)).filter(id => !isNaN(id));
+
+    let styles: any[] = [];
+    try {
+      // We use as any and exclude basePrice if it causes issues, or handle it safely
+      styles = styleIds.length > 0 ? await (prisma.sSStyleCache as any).findMany({
+        where: { styleId: { in: styleIds } },
+        select: { styleId: true, styleName: true, brandName: true, basePrice: true },
+      }) : [];
+    } catch (e) {
+      console.error("SSStyleCache query failed, trying without basePrice:", e);
+      styles = styleIds.length > 0 ? await (prisma.sSStyleCache as any).findMany({
+        where: { styleId: { in: styleIds } },
+        select: { styleId: true, styleName: true, brandName: true },
+      }) : [];
+    }
+
+    const styleMap = new Map(styles.map(s => [s.styleId.toString(), s]));
+    const brands = Array.from(new Set(styles.map(s => s.brandName))).filter(Boolean).sort() as string[];
+
+    let priceRulesCount = 0;
+    try {
+      priceRulesCount = await (prisma.priceRule as any).count({ where: { shop, isActive: true } });
+    } catch (e) {}
+
+    return json({
+      productsCount: products.length,
+      products: products.slice(0, 50).map(p => {
+        const style = styleMap.get(p.ssStyleId);
+        return {
+          id: p.id,
+          ssStyleId: p.ssStyleId,
+          shopifyProductId: p.shopifyProductId,
+          styleName: style?.styleName || `Style ${p.ssStyleId}`,
+          brandName: style?.brandName || 'Unknown',
+          basePrice: style?.basePrice || 0,
+        };
+      }),
+      brands,
+      activePriceRulesCount: priceRulesCount,
+    });
+  } catch (error) {
+    console.error("Bulk Price Loader Error:", error);
+    throw new Response("Internal Server Error", { status: 500 });
+  }
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -104,19 +120,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const where: any = { styleId: { in: styleIds } };
     if (brandFilter) where.brandName = brandFilter;
 
-    const styles = await prisma.sSStyleCache.findMany({
+    const styles = await (prisma.sSStyleCache as any).findMany({
       where,
       select: { styleId: true, styleName: true, brandName: true, basePrice: true },
     });
 
-    const styleMap = new Map(styles.map(s => [s.styleId.toString(), s]));
+    const styleMap = new Map(styles.map((s: any) => [s.styleId.toString(), s]));
     const preview: ProductPreview[] = [];
 
     products.forEach(p => {
-      const style = styleMap.get(p.ssStyleId);
+      const style: any = styleMap.get(p.ssStyleId);
       if (!style) return;
 
-      let newPrice = (style as any).basePrice || 0;
+      let newPrice = style.basePrice || 0;
       const currentPrice = newPrice;
 
       switch (adjustType) {
@@ -173,20 +189,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const where: any = { styleId: { in: styleIds } };
     if (brandFilter) where.brandName = brandFilter;
 
-    const styles = await prisma.sSStyleCache.findMany({
+    const styles = await (prisma.sSStyleCache as any).findMany({
       where,
       select: { styleId: true, basePrice: true },
     });
 
-    const styleMap = new Map(styles.map(s => [s.styleId.toString(), s]));
+    const styleMap = new Map(styles.map((s: any) => [s.styleId.toString(), s]));
     let updated = 0;
     let failed = 0;
 
     for (const product of products) {
-      const style = styleMap.get(product.ssStyleId);
+      const style: any = styleMap.get(product.ssStyleId);
       if (!style) continue;
 
-      let newPrice = (style as any).basePrice || 0;
+      let newPrice = style.basePrice || 0;
 
       switch (adjustType) {
         case 'percent_increase': newPrice *= (1 + adjustValue / 100); break;
@@ -300,7 +316,7 @@ export default function BulkPriceUpdatePage() {
               </Layout.Section>
               <Layout.Section variant="oneHalf">
                 <BlockStack gap="400">
-                  <Select label="Filter by Brand" options={[{ label: 'All Brands', value: '' }, ...brands.map(b => ({ label: b, value: b }))]} value={brandFilter} onChange={setAdjustType} />
+                  <Select label="Filter by Brand" options={[{ label: 'All Brands', value: '' }, ...brands.map(b => ({ label: b, value: b }))]} value={brandFilter} onChange={(val) => setBrandFilter(val)} />
                   <Select label="Rounding" options={[
                       { label: 'No rounding', value: 'none' },
                       { label: 'Round to .99', value: '0.99' },
@@ -329,8 +345,8 @@ export default function BulkPriceUpdatePage() {
                   headings={['Product', 'Brand', 'Current', 'New', 'Change']}
                   rows={previewData.preview.map((p) => [
                     p.styleName, p.brandName, `$${p.currentPrice}`, `$${p.newPrice}`,
-                    <Badge key={p.id} tone={p.newPrice >= p.currentPrice ? 'success' : 'critical'}>
-                      {p.newPrice >= p.currentPrice ? '+' : ''}{((p.newPrice - p.currentPrice) / (p.currentPrice || 1) * 100).toFixed(1)}%
+                    <Badge key={p.id} tone={(p.newPrice ?? 0) >= (p.currentPrice ?? 0) ? 'success' : 'critical'}>
+                      {(p.newPrice ?? 0) >= (p.currentPrice ?? 0) ? '+' : ''}{(( (p.newPrice ?? 0) - (p.currentPrice ?? 0)) / ((p.currentPrice ?? 1) || 1) * 100).toFixed(1)}%
                     </Badge>
                   ])}
                 />
