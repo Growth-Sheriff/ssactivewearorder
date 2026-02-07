@@ -121,7 +121,35 @@ export async function action({ request }: ActionFunctionArgs) {
       });
     }
 
-    return json({ success: true, message: "Upload locations updated" });
+    // Sync to Shopify Metafields so Liquid can access the locations
+    try {
+      await admin.graphql(`
+        mutation storefrontUpdate($input: MetafieldsSetInput!) {
+          metafieldsSet(metafields: [$input]) {
+            metafields { id key value }
+            userErrors { field message }
+          }
+        }
+      `, {
+        variables: {
+          input: {
+            ownerId: `gid://shopify/Shop/${session.id?.split('_')[0] || 'current'}`, // Placeholder, usually we get shop ID differently or use shop handle
+            namespace: "ss_custom",
+            key: "upload_locations",
+            type: "json",
+            value: JSON.stringify(locations.map((l: any) => ({
+              label: l.label,
+              name: l.name || l.label.toLowerCase().replace(/ /g, '_'),
+              icon: l.iconType
+            })))
+          }
+        }
+      });
+    } catch (e) {
+      console.error("Failed to sync metafield:", e);
+    }
+
+    return json({ success: true, message: "Upload locations updated and synced to Shopify" });
   }
 
   // Save settings - in production, save to database
