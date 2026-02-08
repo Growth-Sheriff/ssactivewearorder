@@ -70,8 +70,16 @@ function LocationIcon({ iconType, size = 64 }: { iconType: string; size?: number
 
 /* ─── Loader: Fetch all imported products + their upload locations ─── */
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const shop = session.shop;
+
+  // Fix any products with empty shop values (legacy data)
+  try {
+    await prisma.productMap.updateMany({
+      where: { shop: "" },
+      data: { shop },
+    });
+  } catch (e) {}
 
   const products = await prisma.productMap.findMany({
     where: { shop },
@@ -83,20 +91,49 @@ export async function loader({ request }: LoaderFunctionArgs) {
     orderBy: { createdAt: "desc" },
   });
 
-  // Get style names from cache
-  const styleIds = products.map(p => parseInt(p.ssStyleId)).filter(id => !isNaN(id));
-  let styles: any[] = [];
-  try {
-    styles = styleIds.length > 0
-      ? await (prisma.sSStyleCache as any).findMany({
-          where: { styleId: { in: styleIds } },
-          select: { styleId: true, styleName: true, brandName: true, styleImage: true },
-        })
-      : [];
-  } catch (e) {
-    // SSStyleCache may not have all columns
+  // Fetch product details (title, image, vendor) from Shopify GraphQL in batches
+  const productIds = products.map(p => p.shopifyProductId);
+  const shopifyProducts = new Map<string, { title: string; image: string | null; vendor: string }>();
+
+  // Batch fetch in groups of 50
+  for (let i = 0; i < productIds.length; i += 50) {
+    const batch = productIds.slice(i, i + 50);
+    const idsQuery = batch.map(id => `"${id}"`).join(",");
+    try {
+      const response = await admin.graphql(`
+        query getProducts {
+          nodes(ids: [${idsQuery}]) {
+            ... on Product {
+              id
+              title
+              vendor
+              featuredMedia {
+                preview {
+                  image {
+                    url
+                  }
+                }
+              }
+            }
+          }
+        }
+      `);
+      const data = await response.json();
+      if (data.data?.nodes) {
+        for (const node of data.data.nodes) {
+          if (node?.id) {
+            shopifyProducts.set(node.id, {
+              title: node.title || "Untitled",
+              image: node.featuredMedia?.preview?.image?.url || null,
+              vendor: node.vendor || "Unknown",
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Shopify product fetch error:", e);
+    }
   }
-  const styleMap = new Map(styles.map((s: any) => [s.styleId.toString(), s]));
 
   // Get product-level upload locations
   let productLocations: any[] = [];
@@ -117,14 +154,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 
   const enrichedProducts = products.map(p => {
-    const style: any = styleMap.get(p.ssStyleId);
+    const shopifyData = shopifyProducts.get(p.shopifyProductId);
     return {
       id: p.id,
       shopifyProductId: p.shopifyProductId,
       ssStyleId: p.ssStyleId,
-      styleName: style?.styleName || `Style ${p.ssStyleId}`,
-      brandName: style?.brandName || "Unknown",
-      styleImage: style?.styleImage || null,
+      styleName: shopifyData?.title || `Style ${p.ssStyleId}`,
+      brandName: shopifyData?.vendor || "Unknown",
+      styleImage: shopifyData?.image || null,
       uploadLocations: locationsByProduct.get(p.shopifyProductId) || [],
     };
   });
