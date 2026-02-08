@@ -153,18 +153,26 @@ export async function loader({ request }: LoaderFunctionArgs) {
     locationsByProduct.get(loc.shopifyProductId)!.push(loc);
   }
 
-  const enrichedProducts = products.map(p => {
-    const shopifyData = shopifyProducts.get(p.shopifyProductId);
-    return {
-      id: p.id,
-      shopifyProductId: p.shopifyProductId,
-      ssStyleId: p.ssStyleId,
-      styleName: shopifyData?.title || `Style ${p.ssStyleId}`,
-      brandName: shopifyData?.vendor || "Unknown",
-      styleImage: shopifyData?.image || null,
-      uploadLocations: locationsByProduct.get(p.shopifyProductId) || [],
-    };
-  });
+  const enrichedProducts = products
+    .map(p => {
+      const shopifyData = shopifyProducts.get(p.shopifyProductId);
+      return {
+        id: p.id,
+        shopifyProductId: p.shopifyProductId,
+        ssStyleId: p.ssStyleId,
+        styleName: shopifyData?.title || `Style ${p.ssStyleId}`,
+        brandName: shopifyData?.vendor || "Unknown",
+        styleImage: shopifyData?.image || null,
+        existsInShopify: !!shopifyData,
+        uploadLocations: locationsByProduct.get(p.shopifyProductId) || [],
+      };
+    })
+    // Active (existing in Shopify) products first, deleted ones at end
+    .sort((a, b) => {
+      if (a.existsInShopify && !b.existsInShopify) return -1;
+      if (!a.existsInShopify && b.existsInShopify) return 1;
+      return 0;
+    });
 
   return json({ products: enrichedProducts, presets: LOCATION_PRESETS, shop });
 }
@@ -291,6 +299,20 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ success: true, message: `Upload locations applied to ${updated} products` });
   }
 
+  if (actionType === "cleanup_deleted") {
+    // Remove ProductMap entries that no longer exist in Shopify
+    const deletedIds = JSON.parse(formData.get("deletedIds") as string) as string[];
+    let removed = 0;
+    for (const pid of deletedIds) {
+      try {
+        await (prisma as any).productUploadLocation.deleteMany({ where: { shop, shopifyProductId: pid } });
+        await prisma.productMap.deleteMany({ where: { shop, shopifyProductId: pid } });
+        removed++;
+      } catch (e) {}
+    }
+    return json({ success: true, message: `Cleaned up ${removed} deleted products` });
+  }
+
   return json({ success: false, message: "Unknown action" });
 }
 
@@ -331,7 +353,7 @@ function ProductLocationEditor({
   const activeCount = product.uploadLocations.length;
 
   return (
-    <div>
+    <div style={{ opacity: product.existsInShopify ? 1 : 0.5 }}>
       <InlineStack gap="300" blockAlign="center" wrap={false}>
         <Thumbnail source={product.styleImage || ""} alt={product.styleName} size="small" />
         <BlockStack gap="100">
@@ -340,14 +362,18 @@ function ProductLocationEditor({
         </BlockStack>
         <div style={{ marginLeft: "auto" }}>
           <InlineStack gap="200" blockAlign="center">
-            {activeCount > 0 ? (
+            {!product.existsInShopify ? (
+              <Badge tone="critical">Deleted from Shopify</Badge>
+            ) : activeCount > 0 ? (
               <Badge tone="success">{`${activeCount} location${activeCount !== 1 ? "s" : ""}`}</Badge>
             ) : (
               <Badge tone="attention">No locations</Badge>
             )}
-            <Button size="slim" onClick={() => setIsOpen(!isOpen)}>
-              {isOpen ? "Close" : "Configure"}
-            </Button>
+            {product.existsInShopify && (
+              <Button size="slim" onClick={() => setIsOpen(!isOpen)}>
+                {isOpen ? "Close" : "Configure"}
+              </Button>
+            )}
           </InlineStack>
         </div>
       </InlineStack>
@@ -450,30 +476,40 @@ export default function UploadLocationsPage() {
 
   const productsWithLocations = products.filter((p: any) => p.uploadLocations.length > 0).length;
   const totalLocations = products.reduce((sum: number, p: any) => sum + p.uploadLocations.length, 0);
+  const deletedProducts = products.filter((p: any) => !p.existsInShopify);
+  const activeProducts = products.filter((p: any) => p.existsInShopify);
+
+  const handleCleanup = useCallback(() => {
+    const formData = new FormData();
+    formData.set("action", "cleanup_deleted");
+    formData.set("deletedIds", JSON.stringify(deletedProducts.map((p: any) => p.shopifyProductId)));
+    submit(formData, { method: "post" });
+  }, [deletedProducts, submit]);
 
   return (
     <Page title="Upload Locations" backAction={{ url: "/app" }}
-      primaryAction={{ content: "Bulk Apply", disabled: selectedProducts.length === 0, onAction: () => setBulkOpen(true) }}>
+      primaryAction={{ content: "Bulk Apply", disabled: selectedProducts.length === 0, onAction: () => setBulkOpen(true) }}
+      secondaryActions={deletedProducts.length > 0 ? [{ content: `Clean Up ${deletedProducts.length} Deleted`, onAction: handleCleanup, destructive: true }] : []}>
       <TitleBar title="Upload Locations" />
       <BlockStack gap="600">
         {/* Stats */}
         <InlineGrid columns={3} gap="400">
           <Card>
             <BlockStack gap="200">
-              <Text as="h3" variant="headingSm" tone="subdued">Products</Text>
-              <Text as="p" variant="heading2xl">{products.length}</Text>
+              <Text as="h3" variant="headingSm" tone="subdued">Active Products</Text>
+              <Text as="p" variant="heading2xl">{String(activeProducts.length)}</Text>
             </BlockStack>
           </Card>
           <Card>
             <BlockStack gap="200">
               <Text as="h3" variant="headingSm" tone="subdued">With Locations</Text>
-              <Text as="p" variant="heading2xl">{productsWithLocations}</Text>
+              <Text as="p" variant="heading2xl">{String(productsWithLocations)}</Text>
             </BlockStack>
           </Card>
           <Card>
             <BlockStack gap="200">
               <Text as="h3" variant="headingSm" tone="subdued">Total Locations</Text>
-              <Text as="p" variant="heading2xl">{totalLocations}</Text>
+              <Text as="p" variant="heading2xl">{String(totalLocations)}</Text>
             </BlockStack>
           </Card>
         </InlineGrid>

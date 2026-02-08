@@ -132,16 +132,23 @@
       return aIdx - bIdx;
     });
 
+    const colorCount = colors.length;
+    // On mobile: 4 cols per row (768px media query) → 3 rows = 12 items threshold
+    const mobileRowLimit = 3;
+
     let html = `
       <div class="ss-section">
         <div class="ss-section-title">Select Color</div>
-        <div class="ss-color-grid">
-          ${colors.map((color, index) => `
-            <div class="ss-color-card ${index === 0 ? 'ss-color-selected' : ''}" data-color="${escapeHtml(color.name)}" tabindex="0">
-              <div class="ss-color-image">${color.image ? `<img src="${color.image}" alt="${escapeHtml(color.name)}">` : `<div class="ss-no-image">No Image</div>`}</div>
-              <div class="ss-color-name">${escapeHtml(color.name)}</div>
-            </div>
-          `).join('')}
+        <div class="ss-color-grid-wrapper">
+          <div class="ss-color-grid ss-grid-collapsed" id="ss-color-grid">
+            ${colors.map((color, index) => `
+              <div class="ss-color-card ${index === 0 ? 'ss-color-selected' : ''}" data-color="${escapeHtml(color.name)}" tabindex="0">
+                <div class="ss-color-image">${color.image ? `<img src="${color.image}" alt="${escapeHtml(color.name)}">` : `<div class="ss-no-image">No Image</div>`}</div>
+                <div class="ss-color-name">${escapeHtml(color.name)}</div>
+              </div>
+            `).join('')}
+          </div>
+          <button type="button" class="ss-show-more-btn" id="ss-show-more-btn" onclick="window.ssToggleColorGrid()">Show More ▼</button>
         </div>
       </div>
     `;
@@ -185,6 +192,35 @@
 
     attachEventListeners(container, footerContainer);
   }
+
+  // GLOBAL COLOR GRID TOGGLE (Mobile: 3 rows → +2 rows → all)
+  let gridExpanded = 0; // 0: collapsed (3 rows), 1: +2 rows (5 rows), 2: fully expanded
+  window.ssToggleColorGrid = function() {
+    const grid = document.getElementById('ss-color-grid');
+    const btn = document.getElementById('ss-show-more-btn');
+    if (!grid || !btn) return;
+
+    if (gridExpanded === 0) {
+      // Show 2 more rows (5 total)
+      const itemHeight = grid.querySelector('.ss-color-card')?.offsetHeight || 80;
+      const gap = 8;
+      grid.style.maxHeight = ((itemHeight + gap) * 5 + gap) + 'px';
+      btn.textContent = 'Show All ▼';
+      gridExpanded = 1;
+    } else if (gridExpanded === 1) {
+      // Show all
+      grid.classList.remove('ss-grid-collapsed');
+      grid.style.maxHeight = 'none';
+      btn.textContent = 'Show Less ▲';
+      gridExpanded = 2;
+    } else {
+      // Collapse back to 3 rows
+      grid.classList.add('ss-grid-collapsed');
+      grid.style.maxHeight = '';
+      btn.textContent = 'Show More ▼';
+      gridExpanded = 0;
+    }
+  };
 
   // GLOBAL UPLOAD HANDLERS
   window.handleFileUpload = async function(input, locationName, blockId) {

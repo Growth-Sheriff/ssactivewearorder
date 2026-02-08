@@ -110,10 +110,41 @@
 }
 
 /* Color Grid - Variant Images */
+.ss-color-grid-wrapper {
+  position: relative;
+}
+
 .ss-color-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
   gap: 12px;
+}
+
+/* Collapsed state: max 3 rows on mobile */
+.ss-color-grid.ss-grid-collapsed {
+  overflow: hidden;
+}
+
+/* Show More/Less Button */
+.ss-show-more-btn {
+  display: none;
+  width: 100%;
+  padding: 10px;
+  margin-top: 12px;
+  background: #f8f9fa;
+  border: 1px solid #e1e3e5;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #637381;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.ss-show-more-btn:hover {
+  background: #e8e9ea;
+  color: #1a1a1a;
 }
 
 .ss-color-card {
@@ -264,6 +295,139 @@
   font-size: 10px;
   color: #999;
   margin-top: 4px;
+}
+
+/* ─── Mobile Responsive ─── */
+@media (max-width: 768px) {
+  .ss-bulk-order-widget {
+    padding: 14px;
+    border-radius: 12px;
+    margin: 12px 0;
+  }
+
+  .ss-bulk-header {
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+  }
+
+  .ss-bulk-header h3 {
+    font-size: 16px;
+  }
+
+  /* Color grid: smaller cards on mobile (≈ 1/4 desktop), 4 cols */
+  .ss-color-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+
+  /* Collapsed: show only 3 rows (3rows × 4cols = 12 items visible) */
+  .ss-color-grid.ss-grid-collapsed {
+    max-height: calc((calc((100vw - 28px - 24px) / 4) + 30px) * 3 + 16px);
+  }
+
+  /* Show the toggle button on mobile when there are more than 3 rows */
+  .ss-show-more-btn {
+    display: block;
+  }
+
+  .ss-color-card {
+    padding: 4px;
+    border-radius: 8px;
+    border-width: 1.5px;
+  }
+
+  .ss-color-image {
+    border-radius: 6px;
+    margin-bottom: 4px;
+  }
+
+  .ss-color-name {
+    font-size: 10px;
+  }
+
+  /* Sizes */
+  .ss-sizes-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .ss-size-card {
+    padding: 10px 6px;
+    border-radius: 8px;
+  }
+
+  .ss-size-input {
+    padding: 8px;
+    font-size: 14px;
+    max-width: 56px;
+    border-radius: 6px;
+  }
+
+  .ss-size-name {
+    font-size: 12px;
+  }
+
+  .ss-size-stock {
+    font-size: 10px;
+    padding: 1px 6px;
+  }
+
+  /* Upload grid */
+  .ss-upload-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .ss-upload-area {
+    min-height: 120px;
+    padding: 16px 10px 10px;
+    border-radius: 12px;
+  }
+
+  .ss-tshirt-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 8px;
+  }
+
+  .ss-tshirt-icon svg {
+    width: 44px;
+    height: 44px;
+  }
+
+  .ss-upload-loc-name {
+    font-size: 13px;
+  }
+
+  /* Footer */
+  .ss-order-summary {
+    padding: 12px !important;
+  }
+
+  .ss-add-to-cart-btn {
+    font-size: 14px !important;
+    padding: 12px !important;
+  }
+}
+
+@media (max-width: 400px) {
+  .ss-color-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  /* Collapsed: 3 rows × 3 cols = 9 items */
+  .ss-color-grid.ss-grid-collapsed {
+    max-height: calc((calc((100vw - 28px - 12px) / 3) + 26px) * 3 + 12px);
+  }
+
+  .ss-sizes-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .ss-upload-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Utility Classes */
