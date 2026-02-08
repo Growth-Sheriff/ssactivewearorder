@@ -48,7 +48,7 @@
 {% endschema %}
 
 <style>
-/* Base Container */
+/* Base Container — stays inside parent, never overflows */
 .ss-bulk-order-widget {
   padding: 24px;
   border: 1px solid #e1e3e5;
@@ -56,6 +56,15 @@
   margin: 24px 0;
   background: #ffffff;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.ss-bulk-order-widget *,
+.ss-bulk-order-widget *::before,
+.ss-bulk-order-widget *::after {
+  box-sizing: border-box;
 }
 
 .ss-bulk-header {
@@ -112,6 +121,8 @@
 /* Color Grid - Variant Images */
 .ss-color-grid-wrapper {
   position: relative;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .ss-color-grid {
@@ -205,6 +216,7 @@
 /* Sizes Section */
 .ss-sizes-section {
   margin-bottom: 24px;
+  max-width: 100%;
 }
 
 .ss-sizes-section.ss-hidden {
@@ -215,6 +227,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
   gap: 12px;
+  max-width: 100%;
 }
 
 .ss-size-card {
@@ -300,52 +313,57 @@
 /* ─── Mobile Responsive ─── */
 @media (max-width: 768px) {
   .ss-bulk-order-widget {
-    padding: 14px;
+    padding: 12px;
     border-radius: 12px;
     margin: 12px 0;
   }
 
   .ss-bulk-header {
-    margin-bottom: 14px;
-    padding-bottom: 12px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
   }
 
   .ss-bulk-header h3 {
-    font-size: 16px;
+    font-size: 15px;
   }
 
-  /* Color grid: smaller cards on mobile (≈ 1/4 desktop), 4 cols */
+  /* ── Color grid: uniform small cards ── */
+  /* Each card is a fixed 60px wide, 4 per row with gaps */
   .ss-color-grid {
-    grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
+    grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+    gap: 6px;
   }
 
-  /* Collapsed: show only 3 rows (3rows × 4cols = 12 items visible) */
+  .ss-color-card {
+    padding: 3px;
+    border-radius: 6px;
+    border-width: 1.5px;
+  }
+
+  /* Fixed square image — all same size */
+  .ss-color-image {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 4px;
+    margin-bottom: 2px;
+  }
+
+  .ss-color-name {
+    font-size: 9px;
+    line-height: 1.2;
+  }
+
+  /* Collapsed: 3 rows visible */
   .ss-color-grid.ss-grid-collapsed {
-    max-height: calc((calc((100vw - 28px - 24px) / 4) + 30px) * 3 + 16px);
+    /* 60px card + 2×3px pad + 6px gap ≈ 82px row height */
+    max-height: 258px; /* ~3 rows */
   }
 
-  /* Show the toggle button on mobile when there are more than 3 rows */
   .ss-show-more-btn {
     display: block;
   }
 
-  .ss-color-card {
-    padding: 4px;
-    border-radius: 8px;
-    border-width: 1.5px;
-  }
-
-  .ss-color-image {
-    border-radius: 6px;
-    margin-bottom: 4px;
-  }
-
-  .ss-color-name {
-    font-size: 10px;
-  }
-
-  /* Sizes */
+  /* ── Sizes ── */
   .ss-sizes-grid {
     grid-template-columns: repeat(3, 1fr);
     gap: 8px;
@@ -372,36 +390,36 @@
     padding: 1px 6px;
   }
 
-  /* Upload grid */
+  /* ── Upload grid: ALWAYS 2 columns on mobile ── */
   .ss-upload-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px;
   }
 
   .ss-upload-area {
-    min-height: 120px;
-    padding: 16px 10px 10px;
-    border-radius: 12px;
+    min-height: 110px;
+    padding: 12px 8px 8px;
+    border-radius: 10px;
   }
 
   .ss-tshirt-icon {
-    width: 56px;
-    height: 56px;
+    width: 48px;
+    height: 48px;
     border-radius: 8px;
   }
 
   .ss-tshirt-icon svg {
-    width: 44px;
-    height: 44px;
+    width: 38px;
+    height: 38px;
   }
 
   .ss-upload-loc-name {
-    font-size: 13px;
+    font-size: 12px;
   }
 
-  /* Footer */
+  /* ── Footer ── */
   .ss-order-summary {
-    padding: 12px !important;
+    padding: 10px !important;
   }
 
   .ss-add-to-cart-btn {
@@ -411,22 +429,35 @@
 }
 
 @media (max-width: 400px) {
-  .ss-color-grid {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 6px;
+  .ss-bulk-order-widget {
+    padding: 8px;
   }
 
-  /* Collapsed: 3 rows × 3 cols = 9 items */
+  .ss-color-grid {
+    grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+    gap: 4px;
+  }
+
+  .ss-color-card {
+    padding: 2px;
+  }
+
+  .ss-color-name {
+    font-size: 8px;
+  }
+
   .ss-color-grid.ss-grid-collapsed {
-    max-height: calc((calc((100vw - 28px - 12px) / 3) + 26px) * 3 + 12px);
+    max-height: 220px;
   }
 
   .ss-sizes-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 
+  /* Upload: still 2 columns, even on tiny screens */
   .ss-upload-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 6px;
   }
 }
 
