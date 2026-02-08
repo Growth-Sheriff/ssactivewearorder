@@ -402,17 +402,34 @@ model CustomerTracking {
   @@index([customerEmail])
 }
 
-// 20. Upload Locations
+// 20. Upload Locations (Global defaults per shop)
 model UploadLocation {
   id           String   @id @default(uuid())
   shop         String
   name         String   // Machine name: 'front'
   label        String   // Display name: 'Front'
-  iconType     String   @default("custom") // front, back, left_sleeve, right_sleeve, custom
+  iconType     String   @default("custom") // full_front, full_back, left_chest, right_chest, left_sleeve, right_sleeve, custom
   sortOrder    Int      @default(0)
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@index([shop])
+}
+
+// 21. Product-specific Upload Locations
+model ProductUploadLocation {
+  id                String   @id @default(uuid())
+  shop              String
+  shopifyProductId  String
+  name              String   // Machine name: 'full_front'
+  label             String   // Display name: 'Full Front'
+  iconType          String   @default("full_front")
+  sortOrder         Int      @default(0)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([shop, shopifyProductId])
+  @@unique([shopifyProductId, name])
 }

@@ -44,6 +44,7 @@ export default function App() {
         <Link to="/app/staff">Staff & Roles</Link>
         <Link to="/app/export">Backup/Export</Link>
         <Link to="/app/size-charts">Size Charts</Link>
+        <Link to="/app/upload-locations">Upload Locations</Link>
         <Link to="/app/settings">Settings</Link>
       </NavMenu>
       <Outlet />

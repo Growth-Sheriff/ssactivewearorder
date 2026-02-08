@@ -271,40 +271,52 @@
   display: none !important;
 }
 
-/* Dynamic Upload Grid */
+/* Upload Section */
+.ss-upload-section {
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+
+.ss-upload-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+/* Dynamic Upload Grid – 2 columns like the reference image */
 .ss-upload-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 20px;
-  margin-top: 24px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 500px) {
+  .ss-upload-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .ss-upload-location {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-}
-
-.ss-upload-label {
-  font-size: 15px;
-  font-weight: 700;
-  color: #1a1a1a;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-left: 4px;
 }
 
 .ss-upload-area {
   position: relative;
-  border: 2px dashed #cbd5e1;
+  border: 2px solid #e2e8f0;
   border-radius: 16px;
-  padding: 30px 20px;
+  padding: 24px 16px 16px;
   text-align: center;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  background: #f8fafc;
-  min-height: 180px;
+  transition: all 0.25s ease;
+  background: #ffffff;
+  min-height: 160px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -312,29 +324,41 @@
 }
 
 .ss-upload-area:hover {
-  border-color: {{ block.settings.primary_color | default: '#000' }};
-  background: #f1f5f9;
+  border-color: {{ block.settings.primary_color | default: '#14b8a6' }};
+  box-shadow: 0 4px 16px rgba(0,0,0,0.06);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
 }
 
 .ss-upload-placeholder {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  color: #64748b;
+  gap: 8px;
   width: 100%;
 }
 
-.ss-upload-placeholder svg {
-  color: #94a3b8;
-  transition: transform 0.3s;
+.ss-tshirt-icon {
+  background: #f1f5f9;
+  border-radius: 12px;
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 4px;
+  transition: transform 0.3s ease;
 }
 
-.ss-upload-area:hover .ss-upload-placeholder svg {
-  transform: translateY(-5px);
-  color: {{ block.settings.primary_color | default: '#000' }};
+.ss-upload-area:hover .ss-tshirt-icon {
+  transform: scale(1.08);
+}
+
+.ss-upload-loc-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+  letter-spacing: -0.01em;
 }
 
 .ss-upload-preview {
@@ -379,14 +403,26 @@
   text-overflow: ellipsis;
 }
 
-.ss-upload-area:hover {
-  border-color: {{ block.settings.primary_color | default: '#000' }};
-  background: #f5f5f5;
+.ss-remove-design {
+  background: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ss-remove-design:hover {
+  background: #dc2626;
+  color: white;
 }
 
 .ss-upload-area.ss-upload-dragover {
-  border-color: {{ block.settings.primary_color | default: '#000' }};
-  background: #f0f7ff;
+  border-color: {{ block.settings.primary_color | default: '#14b8a6' }};
+  background: #f0fdfa;
 }
 
 .ss-upload-placeholder {
@@ -644,38 +680,51 @@
     <!-- Variant selection rendered by JS -->
   </div>
 
-  <!-- Dynamic Upload Locations - Now ABOVE the footer -->
-  {%- assign upload_locations = shop.metafields.ss_custom.upload_locations.value -%}
+  <!-- Dynamic Upload Locations – reads from PRODUCT metafield (set per product in merchant panel) -->
+  {%- assign upload_locations = product.metafields.ss_custom.upload_locations.value -%}
   {%- if upload_locations == blank -%}
-    {%- capture default_locs -%}[{"label":"Front","name":"front","icon":"front"},{"label":"Back","name":"back","icon":"back"}]{%- endcapture -%}
-    {%- assign upload_locations = default_locs | parse_json -%}
+    {%- comment -%}Fallback: try shop-level, then default{%- endcomment -%}
+    {%- assign upload_locations = shop.metafields.ss_custom.upload_locations.value -%}
   {%- endif -%}
 
+  {%- if upload_locations != blank and upload_locations.size > 0 -%}
   <div class="ss-upload-section" id="ss-upload-{{ block.id }}" style="display: none;">
+    <div class="ss-upload-section-header">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4m4-5l5-5 5 5m-5-5v12"></path></svg>
+      <span>Upload Your Designs</span>
+    </div>
     <div class="ss-upload-grid">
       {% for location in upload_locations %}
         <div class="ss-upload-location" data-location-name="{{ location.name }}">
-          <div class="ss-upload-label">
-            {% case location.icon %}
-              {% when 'front' %}
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10V7a2 2 0 00-2-2H6a2 2 0 00-2 2v3m16 0v10a2 2 0 01-2 2H6a2 2 0 01-2-2V10m16 0h-4M4 10h4m0 0a2 2 0 012-2h4a2 2 0 012 2m-8 0v4m8-4v4"></path></svg>
-              {% when 'back' %}
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10V7a2 2 0 00-2-2H6a2 2 0 00-2 2v3m16 0v10a2 2 0 01-2 2H6a2 2 0 01-2-2V10m16 0H4M8 8v4m8-4v4"></path></svg>
-              {% when 'left_sleeve' or 'right_sleeve' %}
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 8l-4 4-4-4m8 8l-4 4-4-4"></path></svg>
-              {% else %}
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-            {% endcase %}
-            {{ location.label }}
-          </div>
-
           <div class="ss-upload-area" id="upload-area-{{ location.name }}-{{ block.id }}" onclick="document.getElementById('file-input-{{ location.name }}-{{ block.id }}').click()">
+            <!-- T-shirt Icon with highlighted print zone -->
             <div class="ss-upload-placeholder" id="placeholder-{{ location.name }}-{{ block.id }}">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v4m4-10l4-4 4 4m-4-4v12"></path>
-              </svg>
-              <p>Click to upload</p>
-              <span>SVG, PNG, JPG</span>
+              <div class="ss-tshirt-icon">
+                <svg width="64" height="64" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M30 25 L20 30 L10 45 L22 50 L25 40 L25 85 L75 85 L75 40 L78 50 L90 45 L80 30 L70 25 L62 20 L38 20 L30 25Z"
+                        fill="#f1f5f9" stroke="#94a3b8" stroke-width="2" stroke-linejoin="round"/>
+                  <path d="M38 20 Q50 28 62 20" fill="none" stroke="#94a3b8" stroke-width="2"/>
+                  {% case location.icon %}
+                    {% when 'full_front' %}
+                      <rect x="30" y="35" width="40" height="40" rx="4" fill="#5eead4" fill-opacity="0.5" stroke="#14b8a6" stroke-width="1.5"/>
+                    {% when 'full_back' %}
+                      <rect x="30" y="35" width="40" height="40" rx="4" fill="#818cf8" fill-opacity="0.5" stroke="#6366f1" stroke-width="1.5"/>
+                      <line x1="40" y1="45" x2="60" y2="45" stroke="#6366f1" stroke-width="1" stroke-dasharray="3 2"/>
+                      <line x1="40" y1="55" x2="60" y2="55" stroke="#6366f1" stroke-width="1" stroke-dasharray="3 2"/>
+                    {% when 'left_chest' %}
+                      <rect x="30" y="35" width="16" height="14" rx="3" fill="#5eead4" fill-opacity="0.6" stroke="#14b8a6" stroke-width="1.5"/>
+                    {% when 'right_chest' %}
+                      <rect x="54" y="35" width="16" height="14" rx="3" fill="#fb923c" fill-opacity="0.5" stroke="#f97316" stroke-width="1.5"/>
+                    {% when 'left_sleeve' %}
+                      <rect x="12" y="32" width="14" height="12" rx="3" fill="#a78bfa" fill-opacity="0.5" stroke="#8b5cf6" stroke-width="1.5" transform="rotate(-15 19 38)"/>
+                    {% when 'right_sleeve' %}
+                      <rect x="74" y="32" width="14" height="12" rx="3" fill="#f472b6" fill-opacity="0.5" stroke="#ec4899" stroke-width="1.5" transform="rotate(15 81 38)"/>
+                    {% else %}
+                      <rect x="35" y="40" width="30" height="30" rx="4" fill="#94a3b8" fill-opacity="0.3" stroke="#94a3b8" stroke-width="1.5"/>
+                  {% endcase %}
+                </svg>
+              </div>
+              <p class="ss-upload-loc-name">{{ location.label }}</p>
             </div>
 
             <div class="ss-upload-preview ss-hidden" id="preview-{{ location.name }}-{{ block.id }}">
@@ -697,6 +746,8 @@
       {% endfor %}
     </div>
   </div>
+  {%- endif -%}
+
 
   <div class="ss-footer" id="ss-footer-{{ block.id }}" style="display: none;">
     <!-- Summary and Footer rendered by JS -->
