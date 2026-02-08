@@ -340,9 +340,19 @@ export default function InventorySyncPage() {
     log.syncType === 'full' ? 'Full Sync' : 'Incremental',
     getStatusBadge(log.status),
     `${log.productsUpdated}/${log.productsTotal}`,
-    log.productsFailed > 0 ? String(log.productsFailed) : '0',
+    log.productsFailed > 0 ? <Badge tone="critical">{String(log.productsFailed)}</Badge> : '0',
     formatDate(log.startedAt),
     log.completedAt ? formatDate(log.completedAt) : '—',
+    log.errors ? (
+      <Text as="span" variant="bodySm" tone="critical" breakWord>
+        {(() => {
+          try {
+            const parsed = JSON.parse(log.errors);
+            return Array.isArray(parsed) ? parsed.slice(0, 3).join(', ') + (parsed.length > 3 ? '...' : '') : log.errors;
+          } catch { return log.errors.slice(0, 100); }
+        })()}
+      </Text>
+    ) : '—',
   ]);
 
   return (
@@ -470,8 +480,8 @@ export default function InventorySyncPage() {
               <Text as="h2" variant="headingMd">Sync History</Text>
               <Divider />
               <DataTable
-                columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text']}
-                headings={['Type', 'Status', 'Updated', 'Failed', 'Started', 'Completed']}
+                columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text', 'text']}
+                headings={['Type', 'Status', 'Updated', 'Failed', 'Started', 'Completed', 'Errors']}
                 rows={logRows}
               />
             </BlockStack>
