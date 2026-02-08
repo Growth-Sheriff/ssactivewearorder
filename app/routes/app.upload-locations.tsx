@@ -73,6 +73,29 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const { session, admin } = await authenticate.admin(request);
   const shop = session.shop;
 
+  // Ensure metafield definition exists for storefront access (idempotent)
+  try {
+    await admin.graphql(`
+      mutation CreateMetafieldDefinition {
+        metafieldDefinitionCreate(definition: {
+          name: "Upload Locations"
+          namespace: "ss_custom"
+          key: "upload_locations"
+          type: "json"
+          ownerType: PRODUCT
+          access: {
+            storefront: PUBLIC_READ
+          }
+        }) {
+          createdDefinition { id }
+          userErrors { message }
+        }
+      }
+    `);
+  } catch (e) {
+    // Definition likely already exists, ignore
+  }
+
   // Fix any products with empty shop values (legacy data)
   try {
     await prisma.productMap.updateMany({

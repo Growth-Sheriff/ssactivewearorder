@@ -18,19 +18,35 @@ const yoga = createYoga({
 });
 
 // ─── Cloudflare R2 Upload Handler ───
-const R2 = new S3Client({
-  region: "auto",
-  endpoint: process.env.R2_ENDPOINT || "",
-  credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID || "",
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || "",
-  },
-});
-
+const R2_ENDPOINT = process.env.R2_ENDPOINT || "";
+const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || "";
+const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || "";
 const BUCKET_NAME = process.env.R2_BUCKET_NAME || "designs";
 const PUBLIC_URL = process.env.R2_PUBLIC_URL || "";
 
+// Check if R2 is properly configured
+const R2_CONFIGURED = !!(R2_ENDPOINT && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && PUBLIC_URL);
+
+const R2 = R2_CONFIGURED
+  ? new S3Client({
+      region: "auto",
+      endpoint: R2_ENDPOINT,
+      credentials: {
+        accessKeyId: R2_ACCESS_KEY_ID,
+        secretAccessKey: R2_SECRET_ACCESS_KEY,
+      },
+    })
+  : null;
+
 async function handleFileUpload(request: Request) {
+  // Check R2 configuration first
+  if (!R2_CONFIGURED || !R2) {
+    return json(
+      { success: false, error: "File upload not configured. Please set R2 environment variables." },
+      { status: 503, headers: { "Access-Control-Allow-Origin": "*" } }
+    );
+  }
+
   try {
     const formData = await unstable_parseMultipartFormData(
       request,

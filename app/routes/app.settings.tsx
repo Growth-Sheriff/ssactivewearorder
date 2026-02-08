@@ -47,8 +47,31 @@ const SS_SHIPPING_METHODS = [
 ];
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const shop = session.shop;
+
+  // Ensure shop-level metafield definition exists for storefront access
+  try {
+    await admin.graphql(`
+      mutation CreateShopMetafieldDefinition {
+        metafieldDefinitionCreate(definition: {
+          name: "Upload Locations"
+          namespace: "ss_custom"
+          key: "upload_locations"
+          type: "json"
+          ownerType: SHOP
+          access: {
+            storefront: PUBLIC_READ
+          }
+        }) {
+          createdDefinition { id }
+          userErrors { message }
+        }
+      }
+    `);
+  } catch (e) {
+    // Definition likely already exists
+  }
 
   // Fetch API status
   const ssUser = process.env.SS_USER || "";
@@ -187,12 +210,15 @@ function UploadLocationsCard({ initialLocations }: { initialLocations: any[] }) 
         <BlockStack gap="400">
           {locations.map((loc, index) => (
             <Box key={index} background="bg-surface-secondary" padding="300" borderRadius="200">
-              <InlineGrid columns={['1fr', '1fr', 'auto']} gap="300">
+              <InlineGrid columns={3} gap="300">
                 <TextField label="Label" value={loc.label} onChange={(v) => updateLocation(index, "label", v)} autoComplete="off" />
                 <Select label="Icon" options={[
-                  { label: "Front", value: "front" },
-                  { label: "Back", value: "back" },
-                  { label: "Sleeve", value: "left_sleeve" },
+                  { label: "Full Front", value: "full_front" },
+                  { label: "Full Back", value: "full_back" },
+                  { label: "Left Chest", value: "left_chest" },
+                  { label: "Right Chest", value: "right_chest" },
+                  { label: "Left Sleeve", value: "left_sleeve" },
+                  { label: "Right Sleeve", value: "right_sleeve" },
                   { label: "Custom", value: "custom" },
                 ]} value={loc.iconType} onChange={(v) => updateLocation(index, "iconType", v)} />
                 <div style={{ alignSelf: 'end' }}><Button variant="plain" tone="critical" onClick={() => removeLocation(index)}>×</Button></div>
