@@ -137,15 +137,15 @@ export default function OrdersPage() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "PENDING_APPROVAL":
+      case "pending":
         return <Badge tone="attention">Pending</Badge>;
-      case "SUBMITTED":
+      case "submitted":
         return <Badge tone="success">Submitted</Badge>;
-      case "SHIPPED":
+      case "shipped":
         return <Badge tone="info">Shipped</Badge>;
-      case "ERROR":
+      case "error":
         return <Badge tone="critical">Error</Badge>;
-      case "REJECTED":
+      case "rejected":
         return <Badge>Rejected</Badge>;
       default:
         return <Badge>{status}</Badge>;
@@ -180,7 +180,7 @@ export default function OrdersPage() {
           )}
         </IndexTable.Cell>
         <IndexTable.Cell>
-          {order.status === "PENDING_APPROVAL" && (
+          {order.status === "pending" && (
             <InlineStack gap="200">
               <Button
                 size="slim"
@@ -205,7 +205,7 @@ export default function OrdersPage() {
               Awaiting Shipment
             </Button>
           )}
-          {order.status === "ERROR" && (
+          {order.status === "error" && (
             <InlineStack gap="200">
               <Button size="slim" variant="primary" onClick={() => handleApprove(order.id)}>
                 Retry

@@ -16,10 +16,10 @@ export class ShippingSyncService {
     let updated = 0;
     let errors = 0;
 
-    // Get all orders that are SUBMITTED (not yet shipped)
+    // Get all orders that are submitted (not yet shipped)
     const submittedOrders = await prisma.orderJob.findMany({
       where: {
-        status: "SUBMITTED",
+        status: "submitted",
         ssOrderNumber: { not: null }
       },
     });
@@ -40,7 +40,7 @@ export class ShippingSyncService {
           await prisma.orderJob.update({
             where: { id: order.id },
             data: {
-              status: "SHIPPED",
+              status: "shipped",
               logs: JSON.stringify({
                 trackingNumber: ssOrder.trackingNumber,
                 carrier: ssOrder.carrier || "UPS",
@@ -50,7 +50,7 @@ export class ShippingSyncService {
             },
           });
           updated++;
-          console.log(`[ShippingSync] Order ${order.ssOrderNumber} marked as SHIPPED`);
+          console.log(`[ShippingSync] Order ${order.ssOrderNumber} marked as shipped`);
         }
       } catch (error) {
         errors++;

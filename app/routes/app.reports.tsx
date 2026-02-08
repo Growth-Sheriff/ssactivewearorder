@@ -45,7 +45,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
 
-  // Get order stats
+  // Get order stats - use lowercase status values for consistency
   const [
     totalOrders,
     pendingOrders,
@@ -55,10 +55,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     productsImported,
   ] = await Promise.all([
     prisma.orderJob.count({ where: { shop } }),
-    prisma.orderJob.count({ where: { shop, status: "PENDING_APPROVAL" } }),
-    prisma.orderJob.count({ where: { shop, status: "SUBMITTED" } }),
-    prisma.orderJob.count({ where: { shop, status: "SHIPPED" } }),
-    prisma.orderJob.count({ where: { shop, status: "ERROR" } }),
+    prisma.orderJob.count({ where: { shop, status: "pending" } }),
+    prisma.orderJob.count({ where: { shop, status: "submitted" } }),
+    prisma.orderJob.count({ where: { shop, status: "shipped" } }),
+    prisma.orderJob.count({ where: { shop, status: "error" } }),
     prisma.productMap.count({ where: { shop } }),
   ]);
 
