@@ -323,6 +323,15 @@ export default function InventorySyncPage() {
     return new Date(dateStr).toLocaleString();
   };
 
+  const getStatusText = (status: string): string => {
+    switch (status) {
+      case 'completed': return '✅ Completed';
+      case 'running': return '🔄 Running';
+      case 'failed': return '❌ Failed';
+      default: return status;
+    }
+  };
+
   const getStatusBadge = (status: string): React.ReactNode => {
     switch (status) {
       case 'completed':
@@ -336,24 +345,30 @@ export default function InventorySyncPage() {
     }
   };
 
-  const logRows: React.ReactNode[][] = syncLogs.map(log => [
-    log.syncType === 'full' ? 'Full Sync' : 'Incremental',
-    getStatusBadge(log.status),
-    `${log.productsUpdated}/${log.productsTotal}`,
-    log.productsFailed > 0 ? <Badge tone="critical">{String(log.productsFailed)}</Badge> : '0',
-    formatDate(log.startedAt),
-    log.completedAt ? formatDate(log.completedAt) : '—',
-    log.errors ? (
-      <Text as="span" variant="bodySm" tone="critical" breakWord>
-        {(() => {
-          try {
-            const parsed = JSON.parse(log.errors);
-            return Array.isArray(parsed) ? parsed.slice(0, 3).join(', ') + (parsed.length > 3 ? '...' : '') : log.errors;
-          } catch { return log.errors.slice(0, 100); }
-        })()}
-      </Text>
-    ) : '—',
-  ]);
+  // DataTable requires string[][] for SSR compatibility
+  const logRows: string[][] = syncLogs.map(log => {
+    let errorText = '—';
+    if (log.errors) {
+      try {
+        const parsed = JSON.parse(log.errors);
+        errorText = Array.isArray(parsed)
+          ? parsed.slice(0, 2).join(' | ') + (parsed.length > 2 ? ` (+${parsed.length - 2} more)` : '')
+          : log.errors.slice(0, 80);
+      } catch {
+        errorText = log.errors.slice(0, 80);
+      }
+    }
+
+    return [
+      log.syncType === 'full' ? 'Full Sync' : 'Incremental',
+      getStatusText(log.status),
+      `${log.productsUpdated}/${log.productsTotal}`,
+      log.productsFailed > 0 ? `❌ ${log.productsFailed}` : '0',
+      formatDate(log.startedAt),
+      log.completedAt ? formatDate(log.completedAt) : '—',
+      errorText,
+    ];
+  });
 
   return (
     <Page
