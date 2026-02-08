@@ -404,45 +404,58 @@
   margin-top: 4px;
 }
 
-/* ─── Mobile Responsive ─── */
+/* ═══════════════════════════════════════════════════════════════
+ *  MOBILE — Ultra Soft Premium UX
+ *  No hard borders. Soft backgrounds + subtle shadows.
+ *  Everything floats in its own space.
+ * ═══════════════════════════════════════════════════════════════ */
 @media (max-width: 768px) {
+
+  /* ── Container: soft shadow, no hard border ── */
   .ss-bulk-order-widget {
-    padding: 10px;
-    border-radius: 10px;
-    margin: 8px 0;
-    border-width: 1px;
+    padding: 16px;
+    border: none;
+    border-radius: 16px;
+    margin: 10px 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 14px rgba(0,0,0,0.03);
   }
 
+  /* ── Header: breathing room ── */
   .ss-bulk-header {
-    margin-bottom: 10px;
-    padding-bottom: 8px;
-    gap: 8px;
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+    gap: 10px;
+    border-bottom: 1px solid #f0f1f3;
   }
 
   .ss-bulk-header h3 {
-    font-size: 15px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #1a1a1a;
   }
 
   /* ── Section spacing ── */
   .ss-section {
-    margin-bottom: 14px;
+    margin-bottom: 20px;
   }
 
   .ss-section-title {
-    font-size: 12px;
-    margin-bottom: 8px;
-    letter-spacing: 0.3px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    letter-spacing: 0.5px;
+    color: #9ca3af;
   }
 
-  /* ── Color grid: 7 per row with internal scroll ── */
+  /* ── Color grid: 7/row, soft cards, scrollable ── */
   .ss-color-grid-wrapper {
     max-height: 220px;
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
-    border-radius: 6px;
+    border-radius: 10px;
     scrollbar-width: thin;
-    scrollbar-color: #d1d5db transparent;
+    scrollbar-color: #e5e7eb transparent;
   }
 
   .ss-color-grid-wrapper::-webkit-scrollbar {
@@ -460,158 +473,208 @@
 
   .ss-color-grid {
     grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 3px;
+    gap: 4px;
     padding-right: 2px;
     width: 100%;
   }
 
   .ss-color-card {
-    padding: 2px;
-    border-radius: 4px;
-    border-width: 1px;
+    padding: 3px;
+    border: none;
+    border-radius: 8px;
+    background: #f5f6f8;
     min-width: 0;
     overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
   }
 
   .ss-color-card.ss-color-selected {
-    border-width: 2px;
-    padding: 1px;
+    background: #ffffff;
+    box-shadow: 0 0 0 2px {{ block.settings.primary_color | default: '#000' }}, 0 2px 8px rgba(0,0,0,0.06);
   }
 
   .ss-color-card:hover {
     transform: none;
-    box-shadow: none;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
   }
 
   .ss-color-image {
     width: 100%;
     aspect-ratio: 1;
-    border-radius: 3px;
-    margin-bottom: 1px;
+    border-radius: 6px;
+    margin-bottom: 2px;
     overflow: hidden;
   }
 
   .ss-color-name {
     font-size: 7px;
     line-height: 1.1;
+    font-weight: 500;
+    color: #6b7280;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  /* ── Sizes ── */
+  /* ── Sizes: 3-col, soft floating cards ── */
   .ss-sizes-section {
-    margin-bottom: 14px;
+    margin-bottom: 20px;
   }
 
   .ss-sizes-grid {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 6px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
   }
 
   .ss-size-card {
-    padding: 8px 4px;
-    border-radius: 8px;
+    padding: 10px 6px;
+    border: none;
+    border-radius: 12px;
+    background: #f7f8fa;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+  }
+
+  .ss-size-card:hover:not(.ss-size-out):not(.ss-size-unavailable) {
+    background: #f0f1f4;
+  }
+
+  .ss-size-card.ss-size-out {
+    opacity: 0.45;
+    background: #fafafa;
+  }
+
+  .ss-size-card.ss-size-unavailable {
+    opacity: 0.35;
+    background: transparent;
+    border: 1px dashed #e0e2e6;
   }
 
   .ss-size-input {
     padding: 6px;
     font-size: 14px;
-    max-width: 50px;
-    border-radius: 6px;
+    font-weight: 600;
+    max-width: 44px;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 8px;
+    background: #ffffff;
     margin-bottom: 4px;
+    text-align: center;
+  }
+
+  .ss-size-input:focus {
+    border-color: {{ block.settings.primary_color | default: '#000' }};
+    box-shadow: 0 0 0 3px {{ block.settings.primary_color | default: '#000' }}12;
   }
 
   .ss-size-name {
-    font-size: 11px;
-    margin-bottom: 2px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 3px;
+    color: #374151;
   }
 
   .ss-size-stock {
     font-size: 9px;
-    padding: 1px 5px;
+    padding: 1px 6px;
+    border-radius: 6px;
   }
 
   .ss-size-price {
     font-size: 10px;
-    margin-top: 2px;
+    margin-top: 3px;
+    color: #9ca3af;
   }
 
-  /* ── Upload grid: ALWAYS 2 columns on mobile ── */
+  /* ── Upload: 3 columns, compact, soft ── */
   .ss-upload-section {
-    margin-top: 10px;
-    margin-bottom: 6px;
+    margin-top: 4px;
+    margin-bottom: 8px;
   }
 
   .ss-upload-section-header {
     font-size: 13px;
+    font-weight: 600;
     margin-bottom: 10px;
     padding-bottom: 8px;
     gap: 6px;
+    border-bottom: 1px solid #f0f1f3;
   }
 
   .ss-upload-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
     gap: 8px;
   }
 
   .ss-upload-area {
-    min-height: 100px;
-    padding: 10px 6px 6px;
-    border-radius: 10px;
-    border-width: 1.5px;
+    min-height: 76px;
+    padding: 10px 4px 8px;
+    border: none;
+    border-radius: 12px;
+    background: #f4f6f9;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
   }
 
   .ss-upload-area:hover {
     transform: none;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+  }
+
+  .ss-upload-area:active {
+    background: #ebedf1;
   }
 
   .ss-tshirt-icon {
-    width: 44px;
-    height: 44px;
+    width: 30px;
+    height: 30px;
     border-radius: 6px;
     margin-bottom: 2px;
+    background: #e8edf2;
   }
 
   .ss-tshirt-icon svg {
-    width: 34px;
-    height: 34px;
+    width: 22px;
+    height: 22px;
   }
 
   .ss-upload-loc-name {
-    font-size: 11px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #4b5563;
   }
 
   .ss-upload-placeholder p {
-    font-size: 12px;
+    font-size: 10px;
+    color: #9ca3af;
   }
 
   .ss-upload-placeholder span {
-    font-size: 10px;
+    display: none;  /* hide "or drag & drop" on mobile */
   }
 
   .ss-upload-preview img {
-    width: 60px;
-    height: 60px;
+    width: 36px;
+    height: 36px;
     border-radius: 6px;
   }
 
   .ss-upload-info span {
-    font-size: 11px;
-    max-width: 120px;
+    font-size: 9px;
+    max-width: 80px;
   }
 
   .ss-remove-design {
-    padding: 3px 8px;
-    font-size: 10px;
-    border-radius: 5px;
+    padding: 2px 6px;
+    font-size: 9px;
+    border-radius: 4px;
   }
 
-  /* ── Footer & Order Summary ── */
+  /* ── Footer: Order Summary ── */
   .ss-order-summary {
-    padding: 10px;
-    margin: 10px 0;
-    border-radius: 10px;
+    padding: 14px;
+    margin: 18px 0 12px;
+    border-radius: 12px;
+    background: #f8f9fb;
+    box-shadow: none;
   }
 
   .ss-summary-row {
@@ -620,28 +683,34 @@
 
   .ss-summary-label {
     font-size: 12px;
+    color: #9ca3af;
   }
 
   .ss-summary-value {
-    font-size: 15px;
+    font-size: 16px;
+    font-weight: 600;
   }
 
   .ss-total-price {
     font-size: 20px;
   }
 
+  /* ── Add to Cart: full, rounded, glowing ── */
   .ss-add-to-cart-btn {
-    padding: 12px 16px;
-    font-size: 14px;
-    border-radius: 10px;
+    padding: 14px 16px;
+    font-size: 15px;
+    font-weight: 600;
+    border-radius: 12px;
     gap: 8px;
+    box-shadow: 0 2px 10px {{ block.settings.primary_color | default: '#000' }}25;
   }
 }
 
+/* ── Extra small screens ── */
 @media (max-width: 400px) {
   .ss-bulk-order-widget {
-    padding: 8px;
-    border-radius: 8px;
+    padding: 12px;
+    border-radius: 12px;
     margin: 6px 0;
   }
 
@@ -651,12 +720,12 @@
 
   .ss-color-grid {
     grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 2px;
+    gap: 3px;
   }
 
   .ss-color-card {
-    padding: 1px;
-    border-radius: 3px;
+    padding: 2px;
+    border-radius: 6px;
   }
 
   .ss-color-name {
@@ -664,48 +733,52 @@
   }
 
   .ss-sizes-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 4px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
   }
 
   .ss-size-card {
-    padding: 6px 3px;
+    padding: 8px 4px;
   }
 
   .ss-size-input {
     padding: 5px;
     font-size: 13px;
-    max-width: 46px;
+    max-width: 40px;
+  }
+
+  .ss-size-name {
+    font-size: 11px;
   }
 
   .ss-upload-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
     gap: 6px;
   }
 
   .ss-upload-area {
-    min-height: 90px;
-    padding: 8px 4px 4px;
+    min-height: 68px;
+    padding: 8px 3px 6px;
   }
 
   .ss-tshirt-icon {
-    width: 38px;
-    height: 38px;
+    width: 26px;
+    height: 26px;
   }
 
   .ss-tshirt-icon svg {
-    width: 28px;
-    height: 28px;
+    width: 18px;
+    height: 18px;
   }
 
   .ss-upload-loc-name {
-    font-size: 10px;
+    font-size: 9px;
   }
 
   .ss-add-to-cart-btn {
-    padding: 10px 12px;
-    font-size: 13px;
-    border-radius: 8px;
+    padding: 12px;
+    font-size: 14px;
+    border-radius: 10px;
   }
 }
 
