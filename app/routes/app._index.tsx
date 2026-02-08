@@ -62,8 +62,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     lastSyncLog,
   ] = await Promise.all([
     prisma.productMap.count({ where: { shop } }),
-    prisma.orderJob.count({ where: { shop, status: "PENDING_APPROVAL" } }),
-    prisma.orderJob.count({ where: { shop, status: "SUBMITTED" } }),
+    prisma.orderJob.count({ where: { shop, status: "pending" } }),
+    prisma.orderJob.count({ where: { shop, status: "submitted" } }),
     prisma.orderJob.count({ where: { shop } }),
     prisma.favorite.count({ where: { shop } }),
     prisma.stockAlert.count({ where: { shop, isActive: true } }),

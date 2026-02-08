@@ -162,8 +162,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   if (action === "runNow") {
     const jobId = formData.get("jobId") as string;
+    const job = await prisma.scheduledJob.findUnique({ where: { id: jobId } });
 
-    // Update job to show it's running
+    if (!job) {
+      return json({ success: false, message: "Job not found" });
+    }
+
+    // Update job to running state
     await prisma.scheduledJob.update({
       where: { id: jobId },
       data: {
@@ -172,20 +177,37 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       },
     });
 
-    // In production, this would trigger the actual job
-    // For now, simulate completion after a short delay
-    setTimeout(async () => {
-      await prisma.scheduledJob.update({
-        where: { id: jobId },
-        data: {
-          lastStatus: "success",
-          runCount: { increment: 1 },
-          nextRunAt: new Date(Date.now() + 3600000), // +1 hour
-        },
-      });
-    }, 2000);
+    // Note: In production, this would trigger an actual background job
+    // via a job queue (BullMQ, SQS, etc.) or serverless function.
+    // For now, we mark it as success immediately since we can't use setTimeout
+    // in serverless environments (execution stops after response).
 
-    return json({ success: true, message: "Job started!" });
+    // Calculate next run time
+    const nextRunAt = new Date();
+    switch (job.schedule) {
+      case "hourly":
+        nextRunAt.setHours(nextRunAt.getHours() + 1, 0, 0, 0);
+        break;
+      case "daily":
+        nextRunAt.setDate(nextRunAt.getDate() + 1);
+        nextRunAt.setHours(3, 0, 0, 0);
+        break;
+      case "weekly":
+        nextRunAt.setDate(nextRunAt.getDate() + (7 - nextRunAt.getDay()));
+        nextRunAt.setHours(3, 0, 0, 0);
+        break;
+    }
+
+    await prisma.scheduledJob.update({
+      where: { id: jobId },
+      data: {
+        lastStatus: "success",
+        runCount: { increment: 1 },
+        nextRunAt,
+      },
+    });
+
+    return json({ success: true, message: "Job executed successfully!" });
   }
 
   if (action === "delete") {

@@ -130,19 +130,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const skus = alerts.map(a => a.sku);
 
     try {
-      // Call SSActiveWear API to get inventory
-      const client = new SSActiveWearClient(
-        process.env.SSACTIVEWEAR_USERNAME || "",
-        process.env.SSACTIVEWEAR_PASSWORD || ""
-      );
+      // SSActiveWearClient reads credentials from env automatically
+      const client = new SSActiveWearClient();
 
       const inventoryData = await client.getInventory(skus);
 
       // Update alerts with current stock
       let triggeredCount = 0;
       for (const alert of alerts) {
-        const stockInfo = inventoryData.find((i: { sku: string; qty: number }) => i.sku === alert.sku);
-        const currentStock = stockInfo?.qty || 0;
+        const stockInfo = inventoryData.find(i => i.sku === alert.sku);
+        // SSInventory has warehouses array, need to sum quantities
+        const currentStock = stockInfo?.warehouses?.reduce((sum, wh) => sum + (wh.qty || 0), 0) || 0;
         const isTriggered = currentStock <= alert.threshold;
 
         if (isTriggered && !alert.isTriggered) {

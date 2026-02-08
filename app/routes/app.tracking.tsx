@@ -47,7 +47,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const orders = await prisma.orderJob.findMany({
     where: {
       shop,
-      status: { in: ['SUBMITTED', 'SHIPPED'] },
+      status: { in: ['submitted', 'shipped'] },
     },
     orderBy: { updatedAt: 'desc' },
     take: 50,
@@ -113,7 +113,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (action === "refreshAll") {
     // Refresh all tracking records for this shop's orders
     const orders = await prisma.orderJob.findMany({
-      where: { shop, status: { in: ['SUBMITTED', 'SHIPPED'] } },
+      where: { shop, status: { in: ['submitted', 'shipped'] } },
     });
 
     const orderIds = orders.map(o => o.id);

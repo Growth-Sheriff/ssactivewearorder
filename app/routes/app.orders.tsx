@@ -55,10 +55,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
   });
 
   const statusCounts = {
-    pending: orders.filter((o: OrderJob) => o.status === "PENDING_APPROVAL").length,
-    submitted: orders.filter((o: OrderJob) => o.status === "SUBMITTED").length,
-    shipped: orders.filter((o: OrderJob) => o.status === "SHIPPED").length,
-    error: orders.filter((o: OrderJob) => o.status === "ERROR").length,
+    pending: orders.filter((o: OrderJob) => o.status === "pending").length,
+    submitted: orders.filter((o: OrderJob) => o.status === "submitted").length,
+    shipped: orders.filter((o: OrderJob) => o.status === "shipped").length,
+    error: orders.filter((o: OrderJob) => o.status === "error").length,
   };
 
   return json<LoaderData>({ orders, statusCounts });
