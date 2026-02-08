@@ -188,97 +188,141 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     for (const product of products) {
       try {
         const styleId = parseInt(product.ssStyleId);
-        if (isNaN(styleId)) continue;
+        if (isNaN(styleId)) {
+          failed++;
+          errors.push(`Style ${product.ssStyleId}: Invalid style ID`);
+          continue;
+        }
 
         // Get inventory from SSActiveWear
         const inventory = await ssClient.getInventoryByStyle(styleId);
 
-        if (inventory && Array.isArray(inventory)) {
-          // Build SKU -> quantity map from SS inventory
-          const inventoryBySku = new Map<string, number>();
-          for (const inv of inventory) {
-            const totalQty = inv.warehouses?.reduce((sum, wh) => sum + (wh.qty || 0), 0) || 0;
-            inventoryBySku.set(inv.sku, totalQty);
-          }
+        console.log(`[InventorySync] Style ${styleId}: Got ${inventory?.length || 0} inventory items`);
 
-          // Get Shopify variants directly (no need for VariantMap)
-          const variantResponse = await admin.graphql(`
-            query getProductVariants($productId: ID!) {
-              product(id: $productId) {
-                variants(first: 100) {
-                  edges {
-                    node {
+        if (!inventory || !Array.isArray(inventory) || inventory.length === 0) {
+          failed++;
+          errors.push(`Style ${styleId}: No inventory data from SSActiveWear`);
+          continue;
+        }
+
+        // Build SKU -> quantity map from SS inventory
+        const inventoryBySku = new Map<string, number>();
+        for (const inv of inventory) {
+          const totalQty = inv.warehouses?.reduce((sum, wh) => sum + (wh.qty || 0), 0) || 0;
+          inventoryBySku.set(inv.sku, totalQty);
+        }
+
+        console.log(`[InventorySync] Style ${styleId}: ${inventoryBySku.size} SKUs in inventory map`);
+
+        // Get Shopify variants directly (no need for VariantMap)
+        const variantResponse = await admin.graphql(`
+          query getProductVariants($productId: ID!) {
+            product(id: $productId) {
+              variants(first: 100) {
+                edges {
+                  node {
+                    id
+                    sku
+                    inventoryItem {
                       id
-                      sku
-                      inventoryItem {
-                        id
-                      }
                     }
                   }
                 }
               }
             }
-          `, { variables: { productId: product.shopifyProductId } });
-
-          const variantData = await variantResponse.json();
-          const variants = variantData.data?.product?.variants?.edges || [];
-
-          // Build quantities array
-          const quantities: Array<{ inventoryItemId: string; locationId: string; quantity: number }> = [];
-
-          for (const edge of variants) {
-            const variant = edge.node;
-            const sku = variant.sku;
-            const inventoryItemId = variant.inventoryItem?.id;
-
-            if (sku && inventoryItemId && inventoryBySku.has(sku)) {
-              quantities.push({
-                inventoryItemId,
-                locationId,
-                quantity: inventoryBySku.get(sku)!,
-              });
-            }
           }
+        `, { variables: { productId: product.shopifyProductId } });
 
-          // Update inventory in batches of 20
-          if (quantities.length > 0) {
-            for (let i = 0; i < quantities.length; i += 20) {
-              const batch = quantities.slice(i, i + 20);
-              const updateResponse = await admin.graphql(`
-                mutation setInventory($input: InventorySetQuantitiesInput!) {
-                  inventorySetQuantities(input: $input) {
-                    userErrors { field message }
-                  }
-                }
-              `, {
-                variables: {
-                  input: {
-                    name: "available",
-                    reason: "correction",
-                    ignoreCompareQuantity: true,
-                    quantities: batch,
-                  }
-                }
-              });
+        const variantData = await variantResponse.json();
+        const variants = variantData.data?.product?.variants?.edges || [];
 
-              const updateData = await updateResponse.json();
-              if (updateData.data?.inventorySetQuantities?.userErrors?.length > 0) {
-                console.error(`[InventorySync] Batch errors:`, updateData.data.inventorySetQuantities.userErrors);
+        console.log(`[InventorySync] Style ${styleId}: ${variants.length} Shopify variants found`);
+
+        if (variants.length === 0) {
+          failed++;
+          errors.push(`Style ${styleId}: No variants found in Shopify (product may have been deleted)`);
+          continue;
+        }
+
+        // Build quantities array
+        const quantities: Array<{ inventoryItemId: string; locationId: string; quantity: number }> = [];
+        let matchedSkus = 0;
+        let unmatchedSkus: string[] = [];
+
+        for (const edge of variants) {
+          const variant = edge.node;
+          const sku = variant.sku;
+          const inventoryItemId = variant.inventoryItem?.id;
+
+          if (sku && inventoryItemId && inventoryBySku.has(sku)) {
+            quantities.push({
+              inventoryItemId,
+              locationId,
+              quantity: inventoryBySku.get(sku)!,
+            });
+            matchedSkus++;
+          } else if (sku) {
+            unmatchedSkus.push(sku);
+          }
+        }
+
+        console.log(`[InventorySync] Style ${styleId}: ${matchedSkus} SKUs matched, ${unmatchedSkus.length} unmatched`);
+
+        if (quantities.length === 0) {
+          failed++;
+          const sampleUnmatched = unmatchedSkus.slice(0, 3).join(', ');
+          errors.push(`Style ${styleId}: No SKU matches. Sample Shopify SKUs: ${sampleUnmatched}`);
+          continue;
+        }
+
+        // Update inventory in batches of 20
+        let batchErrors = 0;
+        for (let i = 0; i < quantities.length; i += 20) {
+          const batch = quantities.slice(i, i + 20);
+          const updateResponse = await admin.graphql(`
+            mutation setInventory($input: InventorySetQuantitiesInput!) {
+              inventorySetQuantities(input: $input) {
+                userErrors { field message }
               }
             }
-          }
-
-          // Update ProductMap timestamp
-          await prisma.productMap.update({
-            where: { id: product.id },
-            data: { updatedAt: new Date() },
+          `, {
+            variables: {
+              input: {
+                name: "available",
+                reason: "correction",
+                ignoreCompareQuantity: true,
+                quantities: batch,
+              }
+            }
           });
 
+          const updateData = await updateResponse.json();
+          if (updateData.data?.inventorySetQuantities?.userErrors?.length > 0) {
+            batchErrors++;
+            console.error(`[InventorySync] Style ${styleId} batch errors:`, updateData.data.inventorySetQuantities.userErrors);
+          }
+        }
+
+        // Update ProductMap timestamp
+        await prisma.productMap.update({
+          where: { id: product.id },
+          data: { updatedAt: new Date() },
+        });
+
+        if (batchErrors > 0) {
+          // Partial success
+          updated++;
+          errors.push(`Style ${styleId}: Partially updated with ${batchErrors} batch errors`);
+        } else {
           updated++;
         }
+
+        console.log(`[InventorySync] Style ${styleId}: ✅ Updated ${quantities.length} inventory items`);
+
       } catch (error) {
         failed++;
-        errors.push(`Style ${product.ssStyleId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        errors.push(`Style ${product.ssStyleId}: ${errorMsg}`);
         console.error(`[InventorySync] Failed to sync style ${product.ssStyleId}:`, error);
       }
     }
