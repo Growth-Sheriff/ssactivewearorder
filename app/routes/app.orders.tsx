@@ -88,7 +88,7 @@ export async function action({ request }: ActionFunctionArgs) {
   if (actionType === "reject") {
     await prisma.orderJob.update({
       where: { id: orderId },
-      data: { status: "REJECTED" },
+      data: { status: "rejected" },
     });
     return json<ActionData>({ success: true, message: "Order rejected" });
   }
@@ -200,7 +200,7 @@ export default function OrdersPage() {
               </Button>
             </InlineStack>
           )}
-          {order.status === "SUBMITTED" && (
+          {order.status === "submitted" && (
             <Button size="slim" disabled>
               Awaiting Shipment
             </Button>

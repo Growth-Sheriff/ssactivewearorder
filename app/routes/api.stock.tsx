@@ -83,9 +83,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       where: { styleId: parseInt(ssStyleId) },
     });
 
-    // Get inventory from SSActiveWear
+    // Get inventory from SSActiveWear - use getInventoryByStyle for style-based lookup
     const ssClient = new SSActiveWearClient();
-    const inventory = await ssClient.getInventory(parseInt(ssStyleId));
+    const inventory = await ssClient.getInventoryByStyle(parseInt(ssStyleId));
 
     if (!inventory || !Array.isArray(inventory)) {
       return json(
@@ -100,17 +100,23 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const sizesSet = new Set<string>();
     const matrix: Record<string, Record<string, { qty: number; inStock: boolean }>> = {};
 
-    inventory.forEach((item: { sku?: string; colorName?: string; sizeName?: string; qty?: number }) => {
-      const color = item.colorName || 'Default';
-      const size = item.sizeName || 'One Size';
-      const qty = item.qty || 0;
-      const sku = item.sku || '';
+    // SSInventory has warehouses array, need to get product details for color/size names
+    // For now, use SKU parsing or fetch products
+    const products = await ssClient.getProducts(parseInt(ssStyleId));
+    const skuToProduct = new Map(products.map((p: any) => [p.sku, p]));
+
+    inventory.forEach((item) => {
+      const product = skuToProduct.get(item.sku);
+      const color = product?.colorName || 'Default';
+      const size = product?.sizeName || 'One Size';
+      // SSInventory has warehouses array, sum quantities
+      const qty = item.warehouses?.reduce((sum, w) => sum + (w.qty || 0), 0) || 0;
 
       colorsSet.add(color);
       sizesSet.add(size);
 
       items.push({
-        sku,
+        sku: item.sku,
         color,
         size,
         qty,

@@ -73,23 +73,21 @@ export async function loader({ request }: LoaderFunctionArgs) {
     // Definition likely already exists
   }
 
-  // Fetch API status
-  const ssUser = process.env.SS_USER || "";
-  const ssKey = process.env.SS_KEY || "";
+  // Fetch API status - client reads from SSACTIVEWEAR_USER/KEY env vars
+  const ssUser = process.env.SSACTIVEWEAR_USER || "";
+  const ssKey = process.env.SSACTIVEWEAR_KEY || "";
   let apiStatus = { connected: false, message: "No credentials configured", categoryCount: 0 };
 
-  if (ssUser && ssKey) {
-    try {
-      const client = new SSActiveWearClient(ssUser, ssKey);
-      const categories = await client.getCategories();
-      apiStatus = {
-        connected: true,
-        message: "Successfully connected to SSActiveWear",
-        categoryCount: categories.length,
-      };
-    } catch (e: any) {
-      apiStatus = { connected: false, message: e.message || "Failed to connect", categoryCount: 0 };
-    }
+  try {
+    const client = new SSActiveWearClient();
+    const categories = await client.getCategories();
+    apiStatus = {
+      connected: true,
+      message: "Successfully connected to SSActiveWear",
+      categoryCount: categories.length,
+    };
+  } catch (e: any) {
+    apiStatus = { connected: false, message: e.message || "Failed to connect", categoryCount: 0 };
   }
 
   const settings = {
