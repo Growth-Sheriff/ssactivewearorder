@@ -74,7 +74,7 @@
   margin: 24px 0;
   background: #ffffff;
   color: #1a1a1a;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'SF Pro', system-ui, sans-serif;
   font-size: 14px;
   line-height: 1.5;
   font-weight: 400;
@@ -241,40 +241,12 @@
 .ss-color-grid-wrapper {
   position: relative;
   max-width: 100%;
-  overflow: hidden;
 }
 
 .ss-color-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
   gap: 12px;
-}
-
-/* Collapsed state: max 3 rows on mobile */
-.ss-color-grid.ss-grid-collapsed {
-  overflow: hidden;
-}
-
-/* Show More/Less Button */
-.ss-show-more-btn {
-  display: none;
-  width: 100%;
-  padding: 10px;
-  margin-top: 12px;
-  background: #f8f9fa;
-  border: 1px solid #e1e3e5;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #637381;
-  cursor: pointer;
-  transition: all 0.2s;
-  text-align: center;
-}
-
-.ss-show-more-btn:hover {
-  background: #e8e9ea;
-  color: #1a1a1a;
 }
 
 .ss-color-card {
@@ -432,25 +404,62 @@
 /* ─── Mobile Responsive ─── */
 @media (max-width: 768px) {
   .ss-bulk-order-widget {
-    padding: 12px;
-    border-radius: 12px;
-    margin: 12px 0;
+    padding: 10px;
+    border-radius: 10px;
+    margin: 8px 0;
+    border-width: 1px;
   }
 
   .ss-bulk-header {
-    margin-bottom: 12px;
-    padding-bottom: 10px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    gap: 8px;
   }
 
   .ss-bulk-header h3 {
     font-size: 15px;
   }
 
-  /* ── Color grid: uniform small cards ── */
-  /* Each card is a fixed 60px wide, 4 per row with gaps */
+  /* ── Section spacing ── */
+  .ss-section {
+    margin-bottom: 14px;
+  }
+
+  .ss-section-title {
+    font-size: 12px;
+    margin-bottom: 8px;
+    letter-spacing: 0.3px;
+  }
+
+  /* ── Color grid: uniform 1/4 cards with internal scroll ── */
+  .ss-color-grid-wrapper {
+    max-height: 240px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    border-radius: 8px;
+    /* slim scrollbar */
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db transparent;
+  }
+
+  .ss-color-grid-wrapper::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .ss-color-grid-wrapper::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .ss-color-grid-wrapper::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 4px;
+  }
+
   .ss-color-grid {
     grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
     gap: 6px;
+    padding-right: 2px;
   }
 
   .ss-color-card {
@@ -459,7 +468,11 @@
     border-width: 1.5px;
   }
 
-  /* Fixed square image — all same size */
+  .ss-color-card:hover {
+    transform: none;
+    box-shadow: none;
+  }
+
   .ss-color-image {
     width: 100%;
     aspect-ratio: 1;
@@ -472,84 +485,154 @@
     line-height: 1.2;
   }
 
-  /* Collapsed: 3 rows visible */
-  .ss-color-grid.ss-grid-collapsed {
-    /* 60px card + 2×3px pad + 6px gap ≈ 82px row height */
-    max-height: 258px; /* ~3 rows */
-  }
-
-  .ss-show-more-btn {
-    display: block;
-  }
-
   /* ── Sizes ── */
+  .ss-sizes-section {
+    margin-bottom: 14px;
+  }
+
   .ss-sizes-grid {
     grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
+    gap: 6px;
   }
 
   .ss-size-card {
-    padding: 10px 6px;
+    padding: 8px 4px;
     border-radius: 8px;
   }
 
   .ss-size-input {
-    padding: 8px;
+    padding: 6px;
     font-size: 14px;
-    max-width: 56px;
+    max-width: 50px;
     border-radius: 6px;
+    margin-bottom: 4px;
   }
 
   .ss-size-name {
-    font-size: 12px;
+    font-size: 11px;
+    margin-bottom: 2px;
   }
 
   .ss-size-stock {
+    font-size: 9px;
+    padding: 1px 5px;
+  }
+
+  .ss-size-price {
     font-size: 10px;
-    padding: 1px 6px;
+    margin-top: 2px;
   }
 
   /* ── Upload grid: ALWAYS 2 columns on mobile ── */
+  .ss-upload-section {
+    margin-top: 10px;
+    margin-bottom: 6px;
+  }
+
+  .ss-upload-section-header {
+    font-size: 13px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    gap: 6px;
+  }
+
   .ss-upload-grid {
     grid-template-columns: repeat(2, 1fr) !important;
     gap: 8px;
   }
 
   .ss-upload-area {
-    min-height: 110px;
-    padding: 12px 8px 8px;
+    min-height: 100px;
+    padding: 10px 6px 6px;
     border-radius: 10px;
+    border-width: 1.5px;
+  }
+
+  .ss-upload-area:hover {
+    transform: none;
   }
 
   .ss-tshirt-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 8px;
+    width: 44px;
+    height: 44px;
+    border-radius: 6px;
+    margin-bottom: 2px;
   }
 
   .ss-tshirt-icon svg {
-    width: 38px;
-    height: 38px;
+    width: 34px;
+    height: 34px;
   }
 
   .ss-upload-loc-name {
+    font-size: 11px;
+  }
+
+  .ss-upload-placeholder p {
     font-size: 12px;
   }
 
-  /* ── Footer ── */
+  .ss-upload-placeholder span {
+    font-size: 10px;
+  }
+
+  .ss-upload-preview img {
+    width: 60px;
+    height: 60px;
+    border-radius: 6px;
+  }
+
+  .ss-upload-info span {
+    font-size: 11px;
+    max-width: 120px;
+  }
+
+  .ss-remove-design {
+    padding: 3px 8px;
+    font-size: 10px;
+    border-radius: 5px;
+  }
+
+  /* ── Footer & Order Summary ── */
   .ss-order-summary {
-    padding: 10px !important;
+    padding: 10px;
+    margin: 10px 0;
+    border-radius: 10px;
+  }
+
+  .ss-summary-row {
+    margin-bottom: 8px;
+  }
+
+  .ss-summary-label {
+    font-size: 12px;
+  }
+
+  .ss-summary-value {
+    font-size: 15px;
+  }
+
+  .ss-total-price {
+    font-size: 20px;
   }
 
   .ss-add-to-cart-btn {
-    font-size: 14px !important;
-    padding: 12px !important;
+    padding: 12px 16px;
+    font-size: 14px;
+    border-radius: 10px;
+    gap: 8px;
   }
 }
 
 @media (max-width: 400px) {
   .ss-bulk-order-widget {
     padding: 8px;
+    border-radius: 8px;
+    margin: 6px 0;
+  }
+
+  .ss-color-grid-wrapper {
+    max-height: 200px;
   }
 
   .ss-color-grid {
@@ -559,24 +642,56 @@
 
   .ss-color-card {
     padding: 2px;
+    border-radius: 5px;
   }
 
   .ss-color-name {
     font-size: 8px;
   }
 
-  .ss-color-grid.ss-grid-collapsed {
-    max-height: 220px;
-  }
-
   .ss-sizes-grid {
     grid-template-columns: repeat(2, 1fr);
+    gap: 4px;
   }
 
-  /* Upload: still 2 columns, even on tiny screens */
+  .ss-size-card {
+    padding: 6px 3px;
+  }
+
+  .ss-size-input {
+    padding: 5px;
+    font-size: 13px;
+    max-width: 46px;
+  }
+
   .ss-upload-grid {
     grid-template-columns: repeat(2, 1fr) !important;
     gap: 6px;
+  }
+
+  .ss-upload-area {
+    min-height: 90px;
+    padding: 8px 4px 4px;
+  }
+
+  .ss-tshirt-icon {
+    width: 38px;
+    height: 38px;
+  }
+
+  .ss-tshirt-icon svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  .ss-upload-loc-name {
+    font-size: 10px;
+  }
+
+  .ss-add-to-cart-btn {
+    padding: 10px 12px;
+    font-size: 13px;
+    border-radius: 8px;
   }
 }
 
@@ -891,7 +1006,7 @@
   gap: 10px;
   padding: 14px 24px;
   border-radius: 12px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'SF Pro', system-ui, sans-serif;
   font-size: 14px;
   font-weight: 500;
   z-index: 10000;
