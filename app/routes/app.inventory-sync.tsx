@@ -156,93 +156,130 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // Initialize SSActiveWear client
     const ssClient = new SSActiveWearClient();
 
-    // Sync each product (in production, this would be a background job)
+    // Get first location once (for all products)
+    let locationId: string | null = null;
+    try {
+      const locationsResponse = await admin.graphql(`
+        query getLocations {
+          locations(first: 1) {
+            nodes { id }
+          }
+        }
+      `);
+      const locData = await locationsResponse.json();
+      locationId = locData.data?.locations?.nodes?.[0]?.id;
+    } catch (e) {
+      console.error("[InventorySync] Failed to get location:", e);
+    }
+
+    if (!locationId) {
+      await prisma.inventorySyncLog.update({
+        where: { id: syncLog.id },
+        data: {
+          status: 'failed',
+          errors: "No location found in Shopify",
+          completedAt: new Date(),
+        },
+      });
+      return json({ success: false, message: "No location found in Shopify" });
+    }
+
+    // Sync each product
     for (const product of products) {
       try {
-        // Get inventory from SSActiveWear
         const styleId = parseInt(product.ssStyleId);
         if (isNaN(styleId)) continue;
 
-        // FIX #1: Use getInventoryByStyle instead of getInventory
+        // Get inventory from SSActiveWear
         const inventory = await ssClient.getInventoryByStyle(styleId);
 
         if (inventory && Array.isArray(inventory)) {
-          // Get variant mappings for this product
-          const variantMaps = await prisma.variantMap.findMany({
-            where: { product: { shopifyProductId: product.shopifyProductId } },
-          });
-
-          // Create SKU to inventory map
+          // Build SKU -> quantity map from SS inventory
           const inventoryBySku = new Map<string, number>();
           for (const inv of inventory) {
-            const totalQty = inv.warehouses?.reduce((sum: number, wh: { qty?: number }) => sum + (wh.qty || 0), 0) || 0;
+            const totalQty = inv.warehouses?.reduce((sum, wh) => sum + (wh.qty || 0), 0) || 0;
             inventoryBySku.set(inv.sku, totalQty);
           }
 
-          // FIX #2: Update Shopify inventory for each variant
-          for (const variantMap of variantMaps) {
-            const qty = inventoryBySku.get(variantMap.ssSku) || 0;
-
-            try {
-              // Get inventory item ID for this variant
-              const variantResponse = await admin.graphql(`
-                query getVariantInventory($id: ID!) {
-                  productVariant(id: $id) {
-                    inventoryItem {
+          // Get Shopify variants directly (no need for VariantMap)
+          const variantResponse = await admin.graphql(`
+            query getProductVariants($productId: ID!) {
+              product(id: $productId) {
+                variants(first: 100) {
+                  edges {
+                    node {
                       id
-                    }
-                  }
-                }
-              `, { variables: { id: variantMap.shopifyVariantId } });
-
-              const variantData = await variantResponse.json();
-              const inventoryItemId = variantData.data?.productVariant?.inventoryItem?.id;
-
-              if (inventoryItemId) {
-                // Get first available location
-                const locationsResponse = await admin.graphql(`
-                  query getLocations {
-                    locations(first: 1) {
-                      nodes { id }
-                    }
-                  }
-                `);
-                const locData = await locationsResponse.json();
-                const locationId = locData.data?.locations?.nodes?.[0]?.id;
-
-                if (locationId) {
-                  await admin.graphql(`
-                    mutation setInventory($input: InventorySetQuantitiesInput!) {
-                      inventorySetQuantities(input: $input) {
-                        userErrors { message }
+                      sku
+                      inventoryItem {
+                        id
                       }
                     }
-                  `, {
-                    variables: {
-                      input: {
-                        name: "available",
-                        reason: "correction",
-                        quantities: [{
-                          inventoryItemId,
-                          locationId,
-                          quantity: qty
-                        }]
-                      }
-                    }
-                  });
+                  }
                 }
               }
-            } catch (variantErr) {
-              // Log but continue with other variants
-              console.error(`Variant ${variantMap.ssSku} inventory update failed:`, variantErr);
+            }
+          `, { variables: { productId: product.shopifyProductId } });
+
+          const variantData = await variantResponse.json();
+          const variants = variantData.data?.product?.variants?.edges || [];
+
+          // Build quantities array
+          const quantities: Array<{ inventoryItemId: string; locationId: string; quantity: number }> = [];
+
+          for (const edge of variants) {
+            const variant = edge.node;
+            const sku = variant.sku;
+            const inventoryItemId = variant.inventoryItem?.id;
+
+            if (sku && inventoryItemId && inventoryBySku.has(sku)) {
+              quantities.push({
+                inventoryItemId,
+                locationId,
+                quantity: inventoryBySku.get(sku)!,
+              });
             }
           }
+
+          // Update inventory in batches of 20
+          if (quantities.length > 0) {
+            for (let i = 0; i < quantities.length; i += 20) {
+              const batch = quantities.slice(i, i + 20);
+              const updateResponse = await admin.graphql(`
+                mutation setInventory($input: InventorySetQuantitiesInput!) {
+                  inventorySetQuantities(input: $input) {
+                    userErrors { field message }
+                  }
+                }
+              `, {
+                variables: {
+                  input: {
+                    name: "available",
+                    reason: "correction",
+                    ignoreCompareQuantity: true,
+                    quantities: batch,
+                  }
+                }
+              });
+
+              const updateData = await updateResponse.json();
+              if (updateData.data?.inventorySetQuantities?.userErrors?.length > 0) {
+                console.error(`[InventorySync] Batch errors:`, updateData.data.inventorySetQuantities.userErrors);
+              }
+            }
+          }
+
+          // Update ProductMap timestamp
+          await prisma.productMap.update({
+            where: { id: product.id },
+            data: { updatedAt: new Date() },
+          });
 
           updated++;
         }
       } catch (error) {
         failed++;
         errors.push(`Style ${product.ssStyleId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        console.error(`[InventorySync] Failed to sync style ${product.ssStyleId}:`, error);
       }
     }
 
