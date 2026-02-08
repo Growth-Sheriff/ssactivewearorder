@@ -193,8 +193,8 @@
     const file = input.files[0];
     if (!file) return;
 
-    if (file.size > 25 * 1024 * 1024) {
-      showToast('File too large (Max 25MB)', 'error');
+    if (file.size > 50 * 1024 * 1024) {
+      showToast('File too large (Max 50MB)', 'error');
       return;
     }
 
@@ -209,7 +209,8 @@
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('/apps/ssactiveorder/upload', { method: 'POST', body: formData });
+      // Use the same app proxy endpoint — server detects multipart vs JSON
+      const response = await fetch('/apps/ssactiveorder', { method: 'POST', body: formData });
       const result = await response.json();
 
       if (result.success && result.url) {
@@ -220,18 +221,26 @@
         };
 
         filenameEl.textContent = file.name;
-        if (file.type.startsWith('image/')) thumbImg.src = result.url;
+        // Show thumbnail for image files
+        if (file.type.startsWith('image/') && !file.name.match(/\.(psd|ai|eps|tiff?)$/i)) {
+          thumbImg.src = result.url;
+        } else {
+          // Non-previewable: show file icon
+          thumbImg.src = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="%236b7280" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>');
+        }
         placeholder.classList.add('ss-hidden');
         placeholder.style.display = 'none';
         preview.classList.remove('ss-hidden');
         preview.style.display = 'flex';
-        showToast(`${locationName} design uploaded!`, 'success');
+
+        const readableLabel = locationName.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        showToast(`${readableLabel} design uploaded!`, 'success');
       } else {
         throw new Error(result.error || 'Upload failed');
       }
     } catch (error) {
       console.error('Upload error:', error);
-      showToast('Upload failed', 'error');
+      showToast(error.message || 'Upload failed – please try again', 'error');
       placeholder.innerHTML = `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v4m4-10l4-4 4 4m-4-4v12"></path></svg><p>Retry upload</p>`;
     }
   };
@@ -294,11 +303,13 @@
           const item = { id: input.dataset.variantId, quantity: qty, properties: {} };
 
           // ADD ALL DESIGNS AS PROPERTIES
+          // Fix: properly capitalize location names (full_front → Full Front)
           Object.keys(window.uploadedDesigns).forEach(loc => {
             const d = window.uploadedDesigns[loc];
-            const label = loc.charAt(0).toUpperCase() + loc.slice(1);
+            const label = loc.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
             item.properties[`${label} Design`] = d.url;
             item.properties[`_${loc}_preview`] = d.thumb;
+            item.properties[`_${loc}_filename`] = d.name;
           });
 
           items.push(item);
@@ -309,17 +320,27 @@
       addToCartBtn.textContent = 'Adding...';
 
       try {
-        const res = await fetch('/cart/add.js', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items })
-        });
-        if (res.ok) {
-          showToast('Added to cart!', 'success');
-          setTimeout(() => window.location.href = '/cart', 1000);
-        } else { throw new Error(); }
+        // Batch add in chunks of 10 to avoid Shopify timeout
+        const CHUNK_SIZE = 10;
+        for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+          const chunk = items.slice(i, i + CHUNK_SIZE);
+          const res = await fetch('/cart/add.js', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: chunk })
+          });
+
+          if (!res.ok) {
+            const errorData = await res.json().catch(() => ({}));
+            const msg = errorData.description || errorData.message || 'Failed to add items';
+            throw new Error(msg);
+          }
+        }
+
+        showToast(`Added ${items.length} item${items.length > 1 ? 's' : ''} to cart!`, 'success');
+        setTimeout(() => window.location.href = '/cart', 1000);
       } catch (e) {
-        showToast('Error adding to cart', 'error');
+        showToast(e.message || 'Error adding to cart', 'error');
         addToCartBtn.disabled = false;
         addToCartBtn.textContent = 'Add Selected to Cart';
       }
