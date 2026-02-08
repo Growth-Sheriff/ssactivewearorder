@@ -66,6 +66,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     );
   }
 
+  // FIX #5: Validate shop origin - request must come from the claimed shop
+  const referer = request.headers.get("referer") || request.headers.get("origin") || "";
+  const shopDomain = shop.replace(".myshopify.com", "");
+  if (referer && !referer.includes(shopDomain) && !referer.includes("localhost")) {
+    return json(
+      { success: false, error: "Invalid request origin" },
+      { status: 403, headers: corsHeaders }
+    );
+  }
+
   if (action === "subscribe") {
     const sku = formData.get("sku") as string;
     const productId = formData.get("productId") as string;

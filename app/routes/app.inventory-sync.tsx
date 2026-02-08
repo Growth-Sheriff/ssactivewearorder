@@ -163,15 +163,81 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const styleId = parseInt(product.ssStyleId);
         if (isNaN(styleId)) continue;
 
-        const inventory = await ssClient.getInventory(styleId);
+        // FIX #1: Use getInventoryByStyle instead of getInventory
+        const inventory = await ssClient.getInventoryByStyle(styleId);
 
         if (inventory && Array.isArray(inventory)) {
-          // Calculate total stock across all SKUs
-          const totalStock = inventory.reduce((sum: number, item: { qty?: number }) => sum + (item.qty || 0), 0);
+          // Get variant mappings for this product
+          const variantMaps = await prisma.variantMap.findMany({
+            where: { product: { shopifyProductId: product.shopifyProductId } },
+          });
 
-          // Update Shopify inventory via GraphQL
-          // In production, you would update individual variants
-          // For now, we track the sync
+          // Create SKU to inventory map
+          const inventoryBySku = new Map<string, number>();
+          for (const inv of inventory) {
+            const totalQty = inv.warehouses?.reduce((sum: number, wh: { qty?: number }) => sum + (wh.qty || 0), 0) || 0;
+            inventoryBySku.set(inv.sku, totalQty);
+          }
+
+          // FIX #2: Update Shopify inventory for each variant
+          for (const variantMap of variantMaps) {
+            const qty = inventoryBySku.get(variantMap.ssSku) || 0;
+
+            try {
+              // Get inventory item ID for this variant
+              const variantResponse = await admin.graphql(`
+                query getVariantInventory($id: ID!) {
+                  productVariant(id: $id) {
+                    inventoryItem {
+                      id
+                    }
+                  }
+                }
+              `, { variables: { id: variantMap.shopifyVariantId } });
+
+              const variantData = await variantResponse.json();
+              const inventoryItemId = variantData.data?.productVariant?.inventoryItem?.id;
+
+              if (inventoryItemId) {
+                // Get first available location
+                const locationsResponse = await admin.graphql(`
+                  query getLocations {
+                    locations(first: 1) {
+                      nodes { id }
+                    }
+                  }
+                `);
+                const locData = await locationsResponse.json();
+                const locationId = locData.data?.locations?.nodes?.[0]?.id;
+
+                if (locationId) {
+                  await admin.graphql(`
+                    mutation setInventory($input: InventorySetQuantitiesInput!) {
+                      inventorySetQuantities(input: $input) {
+                        userErrors { message }
+                      }
+                    }
+                  `, {
+                    variables: {
+                      input: {
+                        name: "available",
+                        reason: "correction",
+                        quantities: [{
+                          inventoryItemId,
+                          locationId,
+                          quantity: qty
+                        }]
+                      }
+                    }
+                  });
+                }
+              }
+            } catch (variantErr) {
+              // Log but continue with other variants
+              console.error(`Variant ${variantMap.ssSku} inventory update failed:`, variantErr);
+            }
+          }
+
           updated++;
         }
       } catch (error) {
@@ -220,7 +286,7 @@ export default function InventorySyncPage() {
     return new Date(dateStr).toLocaleString();
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string): React.ReactNode => {
     switch (status) {
       case 'completed':
         return <Badge tone="success"><InlineStack gap="100"><Icon source={CheckCircleIcon} />Completed</InlineStack></Badge>;
@@ -233,11 +299,11 @@ export default function InventorySyncPage() {
     }
   };
 
-  const logRows = syncLogs.map(log => [
+  const logRows: React.ReactNode[][] = syncLogs.map(log => [
     log.syncType === 'full' ? 'Full Sync' : 'Incremental',
     getStatusBadge(log.status),
     `${log.productsUpdated}/${log.productsTotal}`,
-    log.productsFailed > 0 ? <Badge tone="critical">{log.productsFailed}</Badge> : '0',
+    log.productsFailed > 0 ? String(log.productsFailed) : '0',
     formatDate(log.startedAt),
     log.completedAt ? formatDate(log.completedAt) : '—',
   ]);
@@ -350,7 +416,7 @@ export default function InventorySyncPage() {
                         <Text as="span" variant="bodySm" tone="subdued">
                           Updated: {formatDate(p.lastUpdated)}
                         </Text>
-                        <Badge size="small">Style #{p.ssStyleId}</Badge>
+                        <Badge size="small">{`Style #${p.ssStyleId}`}</Badge>
                       </BlockStack>
                     </InlineStack>
                   </Box>

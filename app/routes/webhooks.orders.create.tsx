@@ -18,40 +18,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const gid = `gid://shopify/Order/${orderId}`;
 
   // Check if order contains SS items
-  // We check existing ProductMaps.
-  // This is a simplification. Ideally check line items SKUs or Vendor.
-
+  // We check existing ProductMaps - this is the reliable method
   const lineItems = payload.line_items || [];
   let isSSOrder = false;
 
-  // Quick check by vendor
-  const hasSSVendor = lineItems.some((item: any) => item.vendor === "SSActiveWear" || item.vendor === "Gildan"); // Example check
-
-  // Deep check by ProductMap
-  if (!isSSOrder) {
-      // Find one map
-      // This is expensive per webhook, but for MVP:
-      for (const item of lineItems) {
-         if (item.product_id) {
-             const map = await prisma.productMap.findFirst({
-                 where: { shopifyProductId: `gid://shopify/Product/${item.product_id}` }
-             });
-             if (map) {
-                 isSSOrder = true;
-                 break;
-             }
-         }
+  // FIX #8: Removed vendor-based check - rely only on ProductMap which tracks all imported products
+  for (const item of lineItems) {
+    if (item.product_id) {
+      const map = await prisma.productMap.findFirst({
+        where: { shopifyProductId: `gid://shopify/Product/${item.product_id}` }
+      });
+      if (map) {
+        isSSOrder = true;
+        break;
       }
+    }
   }
 
   if (isSSOrder) {
-    // Create OrderJob
+    // Create OrderJob - FIX: use lowercase 'pending' for consistency with Orders page
     await prisma.orderJob.create({
       data: {
         shop,
         shopifyOrderId: gid,
         shopifyOrderNumber: payload.order_number?.toString() || payload.name || null,
-        status: "PENDING_APPROVAL",
+        status: "pending",
       },
     });
 

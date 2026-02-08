@@ -84,12 +84,17 @@ export class OrderSyncService {
     // 4. Send to SS
     const ssResponse = await ssClient.placeOrder(ssOrderPayload);
 
+    // FIX #7: Validate response before accessing
+    const orderNumber = Array.isArray(ssResponse) && ssResponse[0]?.orderNumber
+      ? ssResponse[0].orderNumber
+      : ssResponse?.orderNumber || "UNKNOWN";
+
     // 5. Update Job
     await prisma.orderJob.update({
         where: { id: orderJobId },
         data: {
-            status: "SUBMITTED",
-            ssOrderNumber: ssResponse[0].orderNumber,
+            status: "submitted",
+            ssOrderNumber: orderNumber,
             logs: "Successfully submitted"
         }
     });
