@@ -641,17 +641,17 @@
   </div>
 
   <div class="ss-content" id="ss-content-{{ block.id }}" style="display: none;">
-    <!-- Content rendered by JS -->
+    <!-- Variant selection rendered by JS -->
   </div>
 
-  <!-- Dynamic Upload Locations -->
+  <!-- Dynamic Upload Locations - Now ABOVE the footer -->
   {%- assign upload_locations = shop.metafields.ss_custom.upload_locations.value -%}
   {%- if upload_locations == blank -%}
     {%- capture default_locs -%}[{"label":"Front","name":"front","icon":"front"},{"label":"Back","name":"back","icon":"back"}]{%- endcapture -%}
     {%- assign upload_locations = default_locs | parse_json -%}
   {%- endif -%}
 
-  <div class="ss-upload-section">
+  <div class="ss-upload-section" id="ss-upload-{{ block.id }}" style="display: none;">
     <div class="ss-upload-grid">
       {% for location in upload_locations %}
         <div class="ss-upload-location" data-location-name="{{ location.name }}">
@@ -696,6 +696,10 @@
         </div>
       {% endfor %}
     </div>
+  </div>
+
+  <div class="ss-footer" id="ss-footer-{{ block.id }}" style="display: none;">
+    <!-- Summary and Footer rendered by JS -->
   </div>
 
   <div class="ss-error" id="ss-error-{{ block.id }}" style="display: none;">

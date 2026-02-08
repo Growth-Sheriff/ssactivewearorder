@@ -16,6 +16,8 @@
     const blockId = container.id.replace('ss-matrix-widget-', '');
     const loadingEl = document.getElementById(`ss-loading-${blockId}`);
     const contentEl = document.getElementById(`ss-content-${blockId}`);
+    const uploadEl = document.getElementById(`ss-upload-${blockId}`);
+    const footerEl = document.getElementById(`ss-footer-${blockId}`);
     const errorEl = document.getElementById(`ss-error-${blockId}`);
 
     const variants = JSON.parse(container.dataset.variants || '[]');
@@ -35,8 +37,10 @@
     try {
       const inventoryData = await fetchInventory(skus);
       loadingEl.style.display = 'none';
-      renderVariantSelector(variants, inventoryData, contentEl, { showWarehouse, buttonText });
+      renderVariantSelector(variants, inventoryData, contentEl, footerEl, { showWarehouse, buttonText });
       contentEl.style.display = 'block';
+      if (uploadEl) uploadEl.style.display = 'block';
+      if (footerEl) footerEl.style.display = 'block';
     } catch (error) {
       console.error("Widget Error:", error);
       loadingEl.style.display = 'none';
@@ -93,7 +97,7 @@
     return new Map();
   }
 
-  function renderVariantSelector(variants, inventoryMap, container, options) {
+  function renderVariantSelector(variants, inventoryMap, container, footerContainer, options) {
     const { buttonText } = options;
     const colorMap = new Map();
     const allSizes = new Set();
@@ -166,16 +170,20 @@
       `;
     });
 
-    html += `
-      <div class="ss-order-summary">
-        <div class="ss-summary-row"><span class="ss-summary-label">Items</span><span class="ss-summary-value" id="ss-total-items">0</span></div>
-        <div class="ss-summary-row"><span class="ss-summary-label">Total</span><span class="ss-summary-value ss-total-price" id="ss-total-price">$0.00</span></div>
-      </div>
-      <button class="ss-add-to-cart-btn" id="ss-add-to-cart-btn" disabled>${buttonText}</button>
-    `;
-
     container.innerHTML = html;
-    attachEventListeners(container);
+
+    // Render Footer separately
+    if (footerContainer) {
+      footerContainer.innerHTML = `
+        <div class="ss-order-summary">
+          <div class="ss-summary-row"><span class="ss-summary-label">Items</span><span class="ss-summary-value" id="ss-total-items">0</span></div>
+          <div class="ss-summary-row"><span class="ss-summary-label">Total</span><span class="ss-summary-value ss-total-price" id="ss-total-price">$0.00</span></div>
+        </div>
+        <button class="ss-add-to-cart-btn" id="ss-add-to-cart-btn" disabled>${buttonText}</button>
+      `;
+    }
+
+    attachEventListeners(container, footerContainer);
   }
 
   // GLOBAL UPLOAD HANDLERS
@@ -240,12 +248,13 @@
     fileInput.value = '';
   };
 
-  function attachEventListeners(container) {
+  function attachEventListeners(container, footerContainer) {
+    const root = container.parentElement;
     const colorCards = container.querySelectorAll('.ss-color-card');
     const inputs = container.querySelectorAll('.ss-size-input');
-    const addToCartBtn = container.querySelector('#ss-add-to-cart-btn');
-    const totalItemsEl = container.querySelector('#ss-total-items');
-    const totalPriceEl = container.querySelector('#ss-total-price');
+    const addToCartBtn = root.querySelector('#ss-add-to-cart-btn');
+    const totalItemsEl = root.querySelector('#ss-total-items');
+    const totalPriceEl = root.querySelector('#ss-total-price');
 
     colorCards.forEach(card => {
       card.addEventListener('click', function() {
