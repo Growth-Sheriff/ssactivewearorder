@@ -12,7 +12,6 @@ import {
     FormLayout,
     InlineGrid,
     InlineStack,
-    Modal,
     Page,
     Text,
     TextField
@@ -205,7 +204,7 @@ export default function VolumePricingPage() {
                         {rule.isActive ? "Active" : "Inactive"}
                       </Badge>
                       {rule.syncEnabled && (
-                        <Badge tone="info">🔄 Auto-sync ({rule.syncIntervalDays}d)</Badge>
+                        <Badge tone="info">{`Auto-sync (${rule.syncIntervalDays}d)`}</Badge>
                       )}
                     </InlineStack>
                     <InlineStack gap="200">
@@ -251,7 +250,7 @@ export default function VolumePricingPage() {
                                 fontWeight: 600,
                                 whiteSpace: "nowrap",
                               }}>
-                                {tier.minQty}-{tier.maxQty || "∞"}
+                                {`${tier.minQty}-${tier.maxQty || "+"}`}
                               </th>
                             ))}
                           </tr>
@@ -281,13 +280,13 @@ export default function VolumePricingPage() {
                   <InlineStack align="space-between">
                     <InlineStack gap="200">
                       {rule.sizePremiums.length > 0 ? (
-                        <Badge>{rule.sizePremiums.length} size premium(s)</Badge>
+                        <Badge>{`${rule.sizePremiums.length} size premium(s)`}</Badge>
                       ) : (
-                        <Text as="span" variant="bodySm" tone="subdued">No size premiums</Text>
+                        <Text as="span" variant="bodySm" tone="subdued">{"No size premiums"}</Text>
                       )}
                     </InlineStack>
                     <Badge tone="info">
-                      {rule._count?.products || 0} product(s) assigned
+                      {`${rule._count?.products || 0} product(s) assigned`}
                     </Badge>
                   </InlineStack>
                 </BlockStack>
@@ -297,63 +296,57 @@ export default function VolumePricingPage() {
         )}
       </BlockStack>
 
-      {/* Create Modal */}
-      <Modal
-        open={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        title="Create Volume Pricing Rule"
-        primaryAction={{
-          content: "Create",
-          onAction: handleCreate,
-          loading: isSubmitting,
-        }}
-        secondaryActions={[
-          { content: "Cancel", onAction: () => setShowCreateModal(false) },
-        ]}
-      >
-        <Modal.Section>
-          <FormLayout>
-            <TextField
-              label="Rule Name"
-              value={newRuleName}
-              onChange={setNewRuleName}
-              placeholder="e.g. Unisex Adult Crewneck"
-              autoComplete="off"
-            />
-            <TextField
-              label="Description (optional)"
-              value={newRuleDesc}
-              onChange={setNewRuleDesc}
-              placeholder="e.g. Volume pricing for standard t-shirts"
-              multiline={2}
-              autoComplete="off"
-            />
-            <Banner tone="info">
-              Default quantity tiers (1-11: 0%, 12-24: 10%, 25-36: 20%, etc.) will be created. You can customize them after.
-            </Banner>
-          </FormLayout>
-        </Modal.Section>
-      </Modal>
+      {/* Create Form */}
+      {showCreateModal && (
+        <Card>
+          <BlockStack gap="400">
+            <InlineStack align="space-between" blockAlign="center">
+              <Text as="h2" variant="headingMd">Create Volume Pricing Rule</Text>
+              <Button onClick={() => setShowCreateModal(false)}>Cancel</Button>
+            </InlineStack>
+            <Divider />
+            <FormLayout>
+              <TextField
+                label="Rule Name"
+                value={newRuleName}
+                onChange={setNewRuleName}
+                placeholder="e.g. Unisex Adult Crewneck"
+                autoComplete="off"
+              />
+              <TextField
+                label="Description (optional)"
+                value={newRuleDesc}
+                onChange={setNewRuleDesc}
+                placeholder="e.g. Volume pricing for standard t-shirts"
+                multiline={2}
+                autoComplete="off"
+              />
+              <Banner tone="info">
+                {"Default quantity tiers (1-11: 0%, 12-24: 10%, 25-36: 20%, etc.) will be created. You can customize them after."}
+              </Banner>
+              <InlineStack gap="200">
+                <Button variant="primary" onClick={handleCreate} loading={isSubmitting}>Create</Button>
+                <Button onClick={() => setShowCreateModal(false)}>Cancel</Button>
+              </InlineStack>
+            </FormLayout>
+          </BlockStack>
+        </Card>
+      )}
 
-      {/* Delete Confirmation Modal */}
-      <Modal
-        open={!!deleteRuleId}
-        onClose={() => setDeleteRuleId(null)}
-        title="Delete Rule?"
-        primaryAction={{
-          content: "Delete",
-          destructive: true,
-          onAction: handleDelete,
-          loading: isSubmitting,
-        }}
-        secondaryActions={[
-          { content: "Cancel", onAction: () => setDeleteRuleId(null) },
-        ]}
-      >
-        <Modal.Section>
-          <Text as="p">This will permanently delete this pricing rule and remove all product assignments. Products will no longer have volume pricing.</Text>
-        </Modal.Section>
-      </Modal>
+      {/* Delete Confirmation */}
+      {deleteRuleId && (
+        <Card>
+          <BlockStack gap="400">
+            <Text as="h2" variant="headingMd">Delete Rule?</Text>
+            <Divider />
+            <Text as="p">{"This will permanently delete this pricing rule and remove all product assignments. Products will no longer have volume pricing."}</Text>
+            <InlineStack gap="200">
+              <Button variant="primary" tone="critical" onClick={handleDelete} loading={isSubmitting}>Delete</Button>
+              <Button onClick={() => setDeleteRuleId(null)}>Cancel</Button>
+            </InlineStack>
+          </BlockStack>
+        </Card>
+      )}
     </Page>
   );
 }
