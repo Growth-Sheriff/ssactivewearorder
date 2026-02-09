@@ -13,7 +13,6 @@ import {
     FormLayout,
     Icon,
     InlineStack,
-    Modal,
     Page,
     Tabs,
     Text,
@@ -24,7 +23,7 @@ import {
     RefreshIcon,
     SearchIcon
 } from "@shopify/polaris-icons";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import prisma from "../db.server";
 import { SSActiveWearClient } from "../services/ssactivewear";
 import { authenticate } from "../shopify.server";
@@ -406,12 +405,16 @@ export default function VolumePricingDetailPage() {
   // Tab state
   const [selectedTab, setSelectedTab] = useState(0);
   const tabs = [
-    { id: "tiers", content: "📊 Quantity Tiers" },
-    { id: "sizes", content: "📏 Size Premiums" },
-    { id: "products", content: `📦 Products (${rule.products.length})` },
-    { id: "settings", content: "⚙️ Settings" },
-    { id: "preview", content: "👁️ Preview" },
+    { id: "tiers", content: "Quantity Tiers" },
+    { id: "sizes", content: "Size Premiums" },
+    { id: "products", content: `Products (${rule.products.length})` },
+    { id: "settings", content: "Settings" },
+    { id: "preview", content: "Preview" },
   ];
+
+  // Hydration-safe date formatting
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   // ─── Tiers State ─────────────────────────────────
   const [tiers, setTiers] = useState<Array<{
@@ -922,7 +925,7 @@ export default function VolumePricingDetailPage() {
                                   {product.styleName || "Unknown"}
                                 </td>
                                 <td style={tdStyle}>
-                                  <Badge>#{product.ssStyleId}</Badge>
+                                  <Badge>{`#${product.ssStyleId}`}</Badge>
                                 </td>
                                 <td style={{ ...tdStyle, fontWeight: 700 }}>
                                   ${product.basePrice.toFixed(2)}
@@ -939,9 +942,9 @@ export default function VolumePricingDetailPage() {
                                   </td>
                                 ))}
                                 <td style={{ ...tdStyle, fontSize: "11px", color: "#637381" }}>
-                                  {product.lastPriceSync
+                                  {product.lastPriceSync && mounted
                                     ? new Date(product.lastPriceSync).toLocaleDateString()
-                                    : "Never"}
+                                    : product.lastPriceSync ? "Synced" : "Never"}
                                 </td>
                                 <td style={tdStyle}>
                                   <button
@@ -1133,7 +1136,7 @@ export default function VolumePricingDetailPage() {
                     alignItems: "center",
                     gap: "12px",
                   }}>
-                    <span style={{ fontSize: "24px" }}>💰</span>
+                    <span style={{ fontSize: "24px" }}>$</span>
                     <div>
                       <div style={{ fontWeight: 700, color: "#166534" }}>Buy more, save more!</div>
                       <div style={{ fontSize: "13px", color: "#15803d" }}>
@@ -1148,14 +1151,15 @@ export default function VolumePricingDetailPage() {
         </Tabs>
       </BlockStack>
 
-      {/* Product Picker Modal */}
-      <Modal
-        open={showProductPicker}
-        onClose={() => setShowProductPicker(false)}
-        title="Add Products to Rule"
-      >
-        <Modal.Section>
+      {/* Product Picker Inline Panel */}
+      {showProductPicker && (
+        <Card>
           <BlockStack gap="400">
+            <InlineStack align="space-between" blockAlign="center">
+              <Text as="h2" variant="headingMd">Add Products to Rule</Text>
+              <Button onClick={() => setShowProductPicker(false)}>Close</Button>
+            </InlineStack>
+            <Divider />
             <TextField
               label="Search by Style ID"
               value={productSearch}
@@ -1189,7 +1193,7 @@ export default function VolumePricingDetailPage() {
                     {filteredAvailable.slice(0, 50).map((product) => (
                       <tr key={product.shopifyProductId} style={{ borderBottom: "1px solid #e1e3e5" }}>
                         <td style={tdStyle}>
-                          <Badge>#{product.ssStyleId}</Badge>
+                          <Badge>{`#${product.ssStyleId}`}</Badge>
                         </td>
                         <td style={{ ...tdStyle, fontSize: "12px", color: "#637381" }}>
                           {product.shopifyProductId.replace("gid://shopify/Product/", "#")}
@@ -1209,14 +1213,14 @@ export default function VolumePricingDetailPage() {
                 </table>
                 {filteredAvailable.length > 50 && (
                   <Text as="p" variant="bodySm" tone="subdued" alignment="center">
-                    Showing 50 of {filteredAvailable.length} products. Use search to narrow down.
+                    {`Showing 50 of ${filteredAvailable.length} products. Use search to narrow down.`}
                   </Text>
                 )}
               </div>
             )}
           </BlockStack>
-        </Modal.Section>
-      </Modal>
+        </Card>
+      )}
     </Page>
   );
 }
