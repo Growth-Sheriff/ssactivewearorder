@@ -596,7 +596,7 @@ export default function VolumePricingDetailPage() {
     <Page
       backAction={{ url: "/app/volume-pricing" }}
       title={rule.name}
-      subtitle={`Volume Pricing Rule • ${rule.products.length} products`}
+      subtitle={`Volume Pricing Rule - ${rule.products.length} products`}
       secondaryActions={[
         {
           content: "Sync Prices Now",
@@ -679,7 +679,7 @@ export default function VolumePricingDetailPage() {
                                   type="number"
                                   value={tier.maxQty}
                                   onChange={(e) => updateTier(index, "maxQty", e.target.value)}
-                                  placeholder="∞"
+                                  placeholder="+"
                                   style={inputStyle}
                                   min="1"
                                 />
@@ -715,7 +715,7 @@ export default function VolumePricingDetailPage() {
                                 color: discVal > 0 ? "#008060" : "#637381",
                                 background: discVal > 0 ? "#f1fcf8" : undefined,
                               }}>
-                                ${Math.max(0, examplePrice).toFixed(2)}
+                                {`$${Math.max(0, examplePrice).toFixed(2)}`}
                               </td>
                               <td style={tdStyle}>
                                 {tiers.length > 1 && (
@@ -728,7 +728,7 @@ export default function VolumePricingDetailPage() {
                                     }}
                                     title="Remove tier"
                                   >
-                                    ✕
+                                    {"\u00D7"}
                                   </button>
                                 )}
                               </td>
@@ -831,7 +831,7 @@ export default function VolumePricingDetailPage() {
                                   fontWeight: 700,
                                   color: "#b98900",
                                 }}>
-                                  ${examplePrice.toFixed(2)}
+                                  {`$${examplePrice.toFixed(2)}`}
                                 </td>
                                 <td style={tdStyle}>
                                   <button
@@ -843,7 +843,7 @@ export default function VolumePricingDetailPage() {
                                     }}
                                     title="Remove"
                                   >
-                                    ✕
+                                    {"\u00D7"}
                                   </button>
                                 </td>
                               </tr>
@@ -901,7 +901,7 @@ export default function VolumePricingDetailPage() {
                                 background: i % 2 === 0 ? "#eaf5ea" : "#f6f6f7",
                                 fontSize: "11px",
                               }}>
-                                {tier.minQty}-{tier.maxQty || "∞"}
+                                {`${tier.minQty}-${tier.maxQty || "+"}`}
                               </th>
                             ))}
                             <th style={thStyle}>Last Sync</th>
@@ -928,7 +928,7 @@ export default function VolumePricingDetailPage() {
                                   <Badge>{`#${product.ssStyleId}`}</Badge>
                                 </td>
                                 <td style={{ ...tdStyle, fontWeight: 700 }}>
-                                  ${product.basePrice.toFixed(2)}
+                                  {`$${product.basePrice.toFixed(2)}`}
                                 </td>
                                 {tierPrices.map((price, i) => (
                                   <td key={i} style={{
@@ -938,7 +938,7 @@ export default function VolumePricingDetailPage() {
                                     background: i % 2 === 0 ? "#f1fcf8" : undefined,
                                     textAlign: "center",
                                   }}>
-                                    ${Math.max(0, price).toFixed(2)}
+                                    {`$${Math.max(0, price).toFixed(2)}`}
                                   </td>
                                 ))}
                                 <td style={{ ...tdStyle, fontSize: "11px", color: "#637381" }}>
@@ -956,7 +956,7 @@ export default function VolumePricingDetailPage() {
                                     }}
                                     title="Remove product"
                                   >
-                                    ✕
+                                    {"\u00D7"}
                                   </button>
                                 </td>
                               </tr>
@@ -1019,7 +1019,7 @@ export default function VolumePricingDetailPage() {
                 <BlockStack gap="400">
                   <Text as="h2" variant="headingMd">Pricing Preview</Text>
                   <Text as="p" variant="bodySm" tone="subdued">
-                    This is how extended pricing looks. (Base price: ${sampleBasePrice.toFixed(2)})
+                    {`This is how extended pricing looks. (Base price: $${sampleBasePrice.toFixed(2)})`}
                   </Text>
                   <Divider />
 
@@ -1084,7 +1084,7 @@ export default function VolumePricingDetailPage() {
                                 borderBottom: "1px solid #e1e3e5",
                                 background: i === 0 ? "#fafafa" : undefined,
                               }}>
-                                ${Math.max(0, price).toFixed(2)}
+                                {`$${Math.max(0, price).toFixed(2)}`}
                               </td>
                             );
                           })}
@@ -1116,7 +1116,7 @@ export default function VolumePricingDetailPage() {
                                   color: "#b98900",
                                   borderBottom: "1px solid #e1e3e5",
                                 }}>
-                                  ${Math.max(0, finalPrice).toFixed(2)}
+                                  {`$${Math.max(0, finalPrice).toFixed(2)}`}
                                 </td>
                               );
                             })}
