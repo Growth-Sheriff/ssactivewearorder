@@ -30,6 +30,7 @@ export default function App() {
         <Link to="/app/orders">Orders</Link>
         <Link to="/app/tracking">Tracking</Link>
         <Link to="/app/price-rules">Price Rules</Link>
+        <Link to="/app/volume-pricing">Volume Pricing</Link>
         <Link to="/app/bulk-price">Bulk Price Update</Link>
         <Link to="/app/stock-alerts">Stock Alerts</Link>
         <Link to="/app/inventory-sync">Inventory Sync</Link>

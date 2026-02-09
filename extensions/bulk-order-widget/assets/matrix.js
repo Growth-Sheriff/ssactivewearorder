@@ -41,6 +41,13 @@
       contentEl.style.display = 'block';
       if (uploadEl) uploadEl.style.display = 'block';
       if (footerEl) footerEl.style.display = 'block';
+
+      // Volume Pricing
+      const volumeEl = document.getElementById(`ss-volume-${blockId}`);
+      if (volumeEl) {
+        renderVolumePricing(volumeEl, blockId, variants);
+        volumeEl.style.display = 'block';
+      }
     } catch (error) {
       console.error("Widget Error:", error);
       loadingEl.style.display = 'none';
@@ -356,5 +363,89 @@
     el.textContent = m;
     document.body.appendChild(el);
     setTimeout(() => el.remove(), 3000);
+  }
+
+  // ═══ Volume Pricing Table ═══
+  function renderVolumePricing(container, blockId, variants) {
+    const raw = container.dataset.volumeTiers;
+    if (!raw) return;
+
+    let data;
+    try {
+      // Handle double-encoded JSON from Liquid
+      let cleaned = raw;
+      if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+        cleaned = JSON.parse(cleaned);
+      }
+      data = typeof cleaned === 'string' ? JSON.parse(cleaned) : cleaned;
+    } catch (e) {
+      console.error('[VolumePricing] Parse error:', e);
+      return;
+    }
+
+    const tiers = data.tiers || [];
+    const sizePremiums = data.sizePremiums || [];
+    const basePrice = data.basePrice || 0;
+
+    if (tiers.length === 0 || basePrice === 0) return;
+
+    const tableEl = document.getElementById(`ss-volume-table-${blockId}`);
+    if (!tableEl) return;
+
+    // Build header
+    let html = '<table class="ss-volume-table"><thead><tr><th>Quantity</th>';
+    tiers.forEach(tier => {
+      const label = tier.maxQty ? `${tier.minQty}-${tier.maxQty}` : `${tier.minQty}+`;
+      html += `<th>${label}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+
+    // XS-XL row (base sizes)
+    html += '<tr><td>Price (XS-XL)</td>';
+    tiers.forEach((tier, i) => {
+      const price = calcTierPrice(basePrice, tier);
+      const cls = i === 0 ? 'ss-price-cell ss-base' : 'ss-price-cell';
+      html += `<td class="${cls}">$${price.toFixed(2)}</td>`;
+    });
+    html += '</tr>';
+
+    // Size premium rows
+    sizePremiums.forEach(sp => {
+      const adjustedBase = sp.premiumType === 'fixed'
+        ? basePrice + sp.premiumValue
+        : basePrice * (1 + sp.premiumValue / 100);
+
+      html += `<tr><td>Price (${escapeHtml(sp.sizePattern)})</td>`;
+      tiers.forEach((tier, i) => {
+        const price = calcTierPrice(adjustedBase, tier);
+        const cls = i === 0 ? 'ss-price-cell ss-base' : 'ss-price-cell';
+        html += `<td class="${cls}">$${price.toFixed(2)}</td>`;
+      });
+      html += '</tr>';
+    });
+
+    // Discount row
+    html += '<tr style="background:#f8fafc;"><td style="color:#64748b;font-weight:600;">Discount</td>';
+    tiers.forEach(tier => {
+      if (tier.discountType === 'percentage') {
+        html += `<td style="font-weight:600;color:${tier.discountValue > 0 ? '#059669' : '#64748b'};">${tier.discountValue}%</td>`;
+      } else {
+        html += `<td style="font-weight:600;color:${tier.discountValue > 0 ? '#059669' : '#64748b'};">-$${tier.discountValue.toFixed(2)}</td>`;
+      }
+    });
+    html += '</tr>';
+
+    html += '</tbody></table>';
+    tableEl.innerHTML = html;
+
+    // Store data for dynamic highlighting
+    container._volumeData = { tiers, sizePremiums, basePrice };
+  }
+
+  function calcTierPrice(base, tier) {
+    if (tier.discountType === 'percentage') {
+      return Math.max(0, base * (1 - tier.discountValue / 100));
+    }
+    return Math.max(0, base - tier.discountValue);
   }
 })();
