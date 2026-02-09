@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { json, useActionData, useLoaderData, useNavigate, useNavigation, useSubmit } from "@remix-run/react";
+import { json, useActionData, useLoaderData, useNavigation, useSubmit } from "@remix-run/react";
 import { TitleBar } from "@shopify/app-bridge-react";
 import {
     Badge,
@@ -101,7 +101,6 @@ export default function VolumePricingPage() {
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const navigation = useNavigation();
-  const navigate = useNavigate();
   const isSubmitting = navigation.state === "submitting";
 
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -210,7 +209,7 @@ export default function VolumePricingPage() {
                     <InlineStack gap="200">
                       <Button
                         icon={EditIcon}
-                        onClick={() => navigate(`/app/volume-pricing/${rule.id}`)}
+                        url={`/app/volume-pricing/${rule.id}`}
                       >
                         Edit
                       </Button>
