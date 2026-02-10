@@ -1,329 +1,366 @@
-// SSActiveWear Variant Selection Widget v5.3 (Detailed Pricing Tooltips + Premium Logic)
-(function() {
+// SSActiveWear Bulk Order Widget v6.0 – Visible Breakdown Panel
+(function () {
+  "use strict";
+  console.log("[SS-Widget] v6.0 loaded");
+
   document.addEventListener("DOMContentLoaded", initVariantWidgets);
 
   window.uploadedDesigns = {};
   window.volumeRules = {};
 
   function initVariantWidgets() {
-    const widgets = document.querySelectorAll('[id^="ss-matrix-widget-"]');
-    widgets.forEach(widget => initWidget(widget));
+    var widgets = document.querySelectorAll('[id^="ss-matrix-widget-"]');
+    widgets.forEach(function (w) { initWidget(w); });
   }
 
-  async function initWidget(container) {
-    const blockId = container.id.replace('ss-matrix-widget-', '');
-    const productId = container.dataset.productId;
-    const loadingEl = container.querySelector('.ss-loading');
+  function initWidget(container) {
+    var blockId = container.id.replace("ss-matrix-widget-", "");
+    var productId = container.dataset.productId;
+    var loadingEl = container.querySelector(".ss-loading");
+    if (loadingEl) loadingEl.style.display = "none";
 
-    if (loadingEl) loadingEl.style.display = 'none';
+    // Show first colour
+    var variants = [];
+    try { variants = JSON.parse(container.dataset.variants || "[]"); } catch (e) {}
+    var firstColor = variants.length ? variants[0].option1 : null;
+    if (firstColor) window.selectMatrixColor(firstColor, blockId);
 
-    // 1. Initial State
-    const variants = JSON.parse(container.dataset.variants || '[]');
-    const firstColor = variants[0]?.option1;
-    if (firstColor) selectMatrixColor(firstColor, blockId);
+    var uploadEl = document.getElementById("ss-upload-" + blockId);
+    if (uploadEl) uploadEl.style.display = "block";
+    var footerEl = container.querySelector(".ss-footer");
+    if (footerEl) footerEl.style.display = "flex";
 
-    // Show static sections
-    const uploadEl = document.getElementById(`ss-upload-${blockId}`);
-    if (uploadEl) uploadEl.style.display = 'block';
-
-    const footerEl = document.querySelector(`#ss-matrix-widget-${blockId} .ss-footer`);
-    if (footerEl) footerEl.style.display = 'flex';
-
-    // 2. Fetch Volume Pricing
-    try {
-      const response = await fetch(`/apps/ssactiveorder/api/volume-pricing?product_id=${productId}`);
-      if (response.ok) {
-        const data = await response.json();
-
-        // Save Rules
+    // Fetch volume pricing
+    fetch("/apps/ssactiveorder/api/volume-pricing?product_id=" + productId)
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data) return;
         window.volumeRules[blockId] = {
-           tiers: data.tiers || [],
-           sizePremiums: data.sizePremiums || [],
-           basePrice: data.basePrice || 0
+          tiers: data.tiers || [],
+          sizePremiums: data.sizePremiums || [],
+          basePrice: data.basePrice || 0
         };
+        if (data.tiers && data.tiers.length > 0) renderVolumeTable(blockId, data.tiers);
+        window.updateMatrixTotal(blockId);
+      })
+      .catch(function (e) { console.warn("[SS-Widget] pricing fetch", e); });
+  }
 
-        if (data.tiers && data.tiers.length > 0) {
-           renderVolumeTable(blockId, data.tiers, window.volumeRules[blockId].basePrice);
+  /* ─── Volume Discount Table ─── */
+  function renderVolumeTable(blockId, tiers) {
+    var container = document.getElementById("ss-volume-" + blockId);
+    var content = document.getElementById("ss-volume-content-" + blockId);
+    if (!container || !content) return;
+    container.style.display = "block";
+
+    content.innerHTML = tiers.map(function (t) {
+      var label = t.type === "percentage" ? ("-" + t.value + "%") : ("$" + t.value.toFixed(2));
+      return '<div class="ss-volume-cell" data-min="' + t.min + '" data-max="' + (t.max || 99999) + '" ' +
+        'onclick="window.applyVolumeTier(\'' + blockId + '\',' + t.min + ')" style="cursor:pointer;">' +
+        '<div class="ss-vol-qty">' + t.min + (t.max ? "-" + t.max : "+") + '</div>' +
+        '<div class="ss-vol-price">' + label + '</div></div>';
+    }).join("");
+  }
+
+  window.applyVolumeTier = function (blockId, minQty) {
+    var container = document.getElementById("ss-matrix-widget-" + blockId);
+    var inputs = container.querySelectorAll(".ss-input-field:not(:disabled)");
+    var currentTotal = 0;
+    container.querySelectorAll(".ss-input-field").forEach(function (i) {
+      currentTotal += parseInt(i.value) || 0;
+    });
+    if (currentTotal >= minQty) return;
+    var needed = minQty - currentTotal;
+    var visibleInputs = [];
+    inputs.forEach(function (i) { if (i.offsetParent !== null) visibleInputs.push(i); });
+    if (!visibleInputs.length) return;
+    var target = visibleInputs[0];
+    visibleInputs.forEach(function (i) {
+      var s = i.dataset.sizeName;
+      if (s === "L" || s === "M") target = i;
+    });
+    target.value = (parseInt(target.value) || 0) + needed;
+    window.updateMatrixTotal(blockId);
+    target.style.transition = "background 0.3s";
+    target.style.background = "#dbeafe";
+    setTimeout(function () { target.style.background = "#fff"; }, 600);
+  };
+
+  /* ─── Colour Selection ─── */
+  window.selectMatrixColor = function (colorName, blockId) {
+    var container = document.getElementById("ss-matrix-widget-" + blockId);
+    if (!container) return;
+    container.querySelectorAll(".ss-color-item").forEach(function (el) {
+      el.classList.toggle("ss-color-selected", el.dataset.color === colorName);
+    });
+    var label = container.querySelector("#ss-selected-color-name");
+    if (label) label.textContent = ": " + colorName;
+    container.querySelectorAll(".ss-size-group").forEach(function (g) {
+      g.style.display = g.dataset.colorGroup === colorName ? "block" : "none";
+    });
+    var mc = container.querySelector(".ss-matrix-container");
+    if (mc) mc.style.display = "block";
+    window.updateMatrixTotal(blockId);
+  };
+
+  /* ═══════════════════════════════════════════════════════
+     MAIN CALCULATION + VISIBLE BREAKDOWN PANEL
+     ═══════════════════════════════════════════════════════ */
+  window.updateMatrixTotal = function (blockId) {
+    var container = document.getElementById("ss-matrix-widget-" + blockId);
+    var inputs = container.querySelectorAll(".ss-input-field");
+    var priceEl = document.getElementById("ss-total-price-" + blockId);
+    var btn = document.getElementById("ss-add-to-cart-" + blockId);
+
+    // Breakdown panel elements
+    var breakdownPanel = document.getElementById("ss-breakdown-" + blockId);
+    var breakdownTitle = document.getElementById("ss-breakdown-title-" + blockId);
+    var breakdownBody = document.getElementById("ss-breakdown-body-" + blockId);
+    var breakdownAlert = document.getElementById("ss-breakdown-alert-" + blockId);
+
+    var rule = window.volumeRules[blockId];
+
+    // 1) Total visible qty
+    var totalQty = 0;
+    inputs.forEach(function (inp) {
+      if (inp.offsetParent !== null) totalQty += parseInt(inp.value) || 0;
+    });
+
+    // 2) Find active tier
+    var activeTier = null;
+    if (rule && rule.tiers) {
+      for (var i = 0; i < rule.tiers.length; i++) {
+        var t = rule.tiers[i];
+        if (totalQty >= t.min && totalQty <= (t.max || 999999)) { activeTier = t; break; }
+      }
+    }
+
+    // 3) Highlight volume table
+    var vContent = document.getElementById("ss-volume-content-" + blockId);
+    if (vContent) {
+      vContent.querySelectorAll(".ss-volume-cell").forEach(function (cell) {
+        var mn = parseInt(cell.dataset.min), mx = parseInt(cell.dataset.max);
+        if (totalQty >= mn && totalQty <= mx) {
+          cell.classList.add("active");
+          cell.style.background = "#dbeafe";
+          cell.style.borderBottom = "3px solid #3b82f6";
+        } else {
+          cell.classList.remove("active");
+          cell.style.background = "";
+          cell.style.borderBottom = "";
+        }
+      });
+    }
+
+    // 4) Calculate and build breakdown rows
+    var grandTotal = 0;
+    var originalTotal = 0; // without discount
+    var lineItems = [];    // for breakdown panel
+    var premiumSizes = []; // to show size premium alert
+
+    inputs.forEach(function (inp) {
+      if (inp.offsetParent === null) return;
+      var qty = parseInt(inp.value) || 0;
+      if (qty === 0) return;
+
+      var variantPrice = parseFloat(inp.dataset.price) || 0;
+      var variantId = inp.dataset.variantId;
+      var sizeName = inp.dataset.sizeName || "OS";
+
+      var itemPrice = variantPrice;
+      var origPrice = variantPrice;
+      var premiumVal = 0;
+
+      // Volume discount
+      if (activeTier) {
+        if (activeTier.type === "percentage") {
+          itemPrice = itemPrice * (1 - activeTier.value / 100);
+        } else {
+          itemPrice = activeTier.value;
+        }
+      }
+
+      // Size premium
+      if (rule && rule.sizePremiums) {
+        for (var p = 0; p < rule.sizePremiums.length; p++) {
+          var prem = rule.sizePremiums[p];
+          if (sizeName === prem.pattern || sizeName.indexOf(prem.pattern) !== -1) {
+            if (prem.type === "percentage") {
+              premiumVal = itemPrice * (prem.value / 100);
+            } else {
+              premiumVal = prem.value;
+            }
+            itemPrice += premiumVal;
+            premiumSizes.push(sizeName + " (+$" + premiumVal.toFixed(2) + ")");
+            break;
+          }
+        }
+      }
+
+      var lineTotal = qty * itemPrice;
+      var origLineTotal = qty * origPrice;
+      grandTotal += lineTotal;
+      originalTotal += origLineTotal;
+
+      lineItems.push({
+        size: sizeName,
+        qty: qty,
+        unitPrice: itemPrice,
+        lineTotal: lineTotal,
+        hasPremium: premiumVal > 0
+      });
+
+      // Update per-input price hint
+      var hintEl = document.getElementById("price-hint-" + variantId);
+      if (hintEl) {
+        hintEl.textContent = "$" + itemPrice.toFixed(2);
+        hintEl.style.color = activeTier ? "#16a34a" : "#666";
+      }
+    });
+
+    // 5) Update total
+    if (priceEl) priceEl.textContent = "$" + grandTotal.toFixed(2);
+    if (btn) btn.disabled = totalQty === 0;
+
+    // 6) Build visible breakdown panel
+    if (breakdownPanel) {
+      if (totalQty > 0 && lineItems.length > 0) {
+        breakdownPanel.style.display = "block";
+
+        // Title
+        if (activeTier && breakdownTitle) {
+          var tierLabel = activeTier.type === "percentage"
+            ? (activeTier.value + "% discount")
+            : ("$" + activeTier.value.toFixed(2) + "/ea");
+          breakdownTitle.textContent = "Volume Discount Active: " + tierLabel;
+          var tierRange = activeTier.min + (activeTier.max ? "-" + activeTier.max : "+") + " pcs tier";
+          breakdownTitle.textContent += " (" + tierRange + ")";
+        } else if (breakdownTitle) {
+          breakdownTitle.textContent = "Order Summary";
         }
 
-        updateMatrixTotal(blockId);
-      }
-    } catch (e) {
-      console.warn("Pricing fetch failed", e);
-    }
-  }
+        // Body – line items
+        if (breakdownBody) {
+          var html = "";
+          lineItems.forEach(function (li) {
+            var premTag = li.hasPremium ? ' <span style="color:#b45309;font-size:10px;">(incl. size premium)</span>' : "";
+            html += '<div class="ss-breakdown-row">' +
+              "<span>" + li.qty + "× " + li.size + " @ $" + li.unitPrice.toFixed(2) + premTag + "</span>" +
+              "<span>$" + li.lineTotal.toFixed(2) + "</span></div>";
+          });
 
-  function renderVolumeTable(blockId, tiers, baseP) {
-    const container = document.getElementById(`ss-volume-${blockId}`);
-    const content = document.getElementById(`ss-volume-content-${blockId}`);
-    if (!container || !content) return;
+          // Savings
+          var savings = originalTotal - grandTotal;
+          html += '<div class="ss-breakdown-row total-row">' +
+            "<span>Total (" + totalQty + " items)</span>" +
+            "<span>$" + grandTotal.toFixed(2);
+          if (savings > 0) {
+            html += ' <span class="ss-savings-badge">Save $' + savings.toFixed(2) + "</span>";
+          }
+          html += "</span></div>";
 
-    container.style.display = 'block';
+          breakdownBody.innerHTML = html;
+        }
 
-    content.innerHTML = tiers.map(t => {
-       let label = "";
-       if (t.type === 'percentage') {
-          label = `-${t.value}%`;
-       } else {
-          label = `$${t.value.toFixed(2)}`;
-       }
-
-       return `
-         <div class="ss-volume-cell"
-              data-min="${t.min}"
-              data-max="${t.max || 99999}"
-              onclick="window.applyVolumeTier('${blockId}', ${t.min})"
-              style="cursor:pointer;">
-            <div class="ss-vol-qty">${t.min}${t.max ? '-' + t.max : '+'}</div>
-            <div class="ss-vol-price">${label}</div>
-         </div>
-       `;
-    }).join('');
-  }
-
-  window.applyVolumeTier = function(blockId, minQty) {
-    const container = document.getElementById(`ss-matrix-widget-${blockId}`);
-    const inputs = container.querySelectorAll('.ss-input-field:not(:disabled)');
-
-    let currentTotal = 0;
-    container.querySelectorAll('.ss-input-field').forEach(i => currentTotal += (parseInt(i.value) || 0));
-
-    if (currentTotal >= minQty) return;
-
-    const needed = minQty - currentTotal;
-
-    // Find visibly active inputs
-    let target = null; // Prefer visible inputs
-    const visibleInputs = Array.from(inputs).filter(i => i.offsetParent !== null);
-
-    if (visibleInputs.length > 0) {
-       // Prefer L, M, S
-       target = visibleInputs.find(i => i.dataset.sizeName === 'L' || i.dataset.sizeName === 'M') || visibleInputs[0];
-    } else {
-       target = inputs[0];
-    }
-
-    if (target) {
-       const oldVal = parseInt(target.value) || 0;
-       target.value = oldVal + needed;
-       updateMatrixTotal(blockId);
-
-       target.style.transition = "background 0.3s";
-       target.style.background = "#dbeafe";
-       setTimeout(() => target.style.background = "#fff", 600);
-    }
-  };
-
-  window.selectMatrixColor = function(colorName, blockId) {
-    const container = document.getElementById(`ss-matrix-widget-${blockId}`);
-    if (!container) return;
-
-    container.querySelectorAll('.ss-color-item').forEach(el => {
-      el.classList.toggle('ss-color-selected', el.dataset.color === colorName);
-    });
-
-    const label = container.querySelector('#ss-selected-color-name');
-    if (label) label.textContent = `: ${colorName}`;
-
-    container.querySelectorAll('.ss-size-group').forEach(group => {
-      group.style.display = (group.dataset.colorGroup === colorName) ? 'block' : 'none';
-    });
-
-    const mContainer = container.querySelector('.ss-matrix-container');
-    if (mContainer) mContainer.style.display = 'block';
-
-    updateMatrixTotal(blockId);
-  };
-
-  window.updateMatrixTotal = function(blockId) {
-    const container = document.getElementById(`ss-matrix-widget-${blockId}`);
-    const inputs = container.querySelectorAll('.ss-input-field');
-    const priceEl = document.getElementById(`ss-total-price-${blockId}`);
-    const btn = document.getElementById(`ss-add-to-cart-${blockId}`);
-
-    let totalQty = 0;
-    inputs.forEach(inp => {
-      if (inp.offsetParent !== null) {
-         totalQty += parseInt(inp.value) || 0;
-      }
-    });
-
-    const rule = window.volumeRules[blockId];
-
-    // 1. Find Active Tier
-    let activeTier = null;
-    if (rule && rule.tiers) {
-       activeTier = rule.tiers.find(t => totalQty >= t.min && totalQty <= (t.max || 999999));
-    }
-
-    // 2. Highlight Table
-    const volumeContent = document.getElementById(`ss-volume-content-${blockId}`);
-    if (volumeContent) {
-       volumeContent.querySelectorAll('.ss-volume-cell').forEach(cell => {
-          const min = parseInt(cell.dataset.min);
-          const max = parseInt(cell.dataset.max);
-          if (totalQty >= min && totalQty <= max) {
-             cell.classList.add('active');
-             cell.style.background = '#dbeafe';
-             cell.style.borderBottom = '3px solid #3b82f6';
+        // Alert – size premiums
+        if (breakdownAlert) {
+          if (premiumSizes.length > 0) {
+            var unique = [];
+            premiumSizes.forEach(function (s) { if (unique.indexOf(s) === -1) unique.push(s); });
+            breakdownAlert.style.display = "flex";
+            breakdownAlert.innerHTML = "⚠️ <span>Size premiums applied: <strong>" + unique.join(", ") + "</strong></span>";
           } else {
-             cell.classList.remove('active');
-             cell.style.background = '';
-             cell.style.borderBottom = '';
+            breakdownAlert.style.display = "none";
           }
-       });
+        }
+      } else {
+        breakdownPanel.style.display = "none";
+      }
     }
-
-    // 3. Calculate Total & Update Per-Item Prices and Tooltips
-    let grandTotal = 0;
-
-    inputs.forEach(inp => {
-      if (inp.offsetParent === null) return;
-
-      const qty = parseInt(inp.value) || 0;
-      const variantPrice = parseFloat(inp.dataset.price) || 0;
-      const variantId = inp.dataset.variantId;
-      const sizeName = inp.dataset.sizeName || "";
-
-      let itemPrice = variantPrice;
-      let tooltipHtml = `<div class="ss-tooltip-row"><span>Base Price:</span> <span>$${variantPrice.toFixed(2)}</span></div>`;
-
-      // Discount Logic
-      if (activeTier) {
-         if (activeTier.type === 'percentage') {
-             const discAmount = itemPrice * (activeTier.value / 100);
-             itemPrice -= discAmount;
-             tooltipHtml += `<div class="ss-tooltip-row"><span>Vol Discount (-${activeTier.value}%):</span> <span>-$${discAmount.toFixed(2)}</span></div>`;
-         } else {
-             // Fixed Price Override
-             // Usually Base Price is replaced by this.
-             // But if we want to show 'Detail', we show difference.
-             const oldP = itemPrice;
-             itemPrice = activeTier.value;
-             const diff = oldP - itemPrice;
-             if (diff > 0) tooltipHtml += `<div class="ss-tooltip-row"><span>Vol Price:</span> <span>-$${diff.toFixed(2)}</span></div>`;
-         }
-      }
-
-      // Size Premium Logic
-      if (rule && rule.sizePremiums) {
-          const premium = rule.sizePremiums.find(p => sizeName.includes(p.pattern) || sizeName === p.pattern);
-          if (premium) {
-             let premAmount = 0;
-             if (premium.type === 'percentage') {
-                 premAmount = itemPrice * (premium.value / 100); // Percentage of discounted price? Or Base?
-                 // Usually Premium is strict add-on. Base * %.
-                 // But let's assume simple addition to current price for safety.
-                 itemPrice += premAmount;
-                 tooltipHtml += `<div class="ss-tooltip-row"><span>Size Prem (+${premium.value}%):</span> <span>+$${premAmount.toFixed(2)}</span></div>`;
-             } else {
-                 premAmount = premium.value;
-                 itemPrice += premAmount;
-                 tooltipHtml += `<div class="ss-tooltip-row"><span>Size Prem:</span> <span>+$${premAmount.toFixed(2)}</span></div>`;
-             }
-          }
-      }
-
-      if (qty > 0) grandTotal += qty * itemPrice;
-
-      // Update Hint with Tooltip
-      const hintEl = document.getElementById(`price-hint-${variantId}`);
-      if (hintEl) {
-         tooltipHtml += `<div class="ss-tooltip-row total"><span>Final Price:</span> <span>$${itemPrice.toFixed(2)}</span></div>`;
-
-         hintEl.innerHTML = `$${itemPrice.toFixed(2)} <div class="ss-price-tooltip">${tooltipHtml}</div>`;
-
-         if (activeTier) hintEl.style.color = '#16a34a'; // Green
-         else hintEl.style.color = '#666';
-      }
-    });
-
-    if (priceEl) priceEl.textContent = `$${grandTotal.toFixed(2)}`;
-    if (btn) btn.disabled = totalQty === 0;
   };
 
-  // ─── ADD TO CART ───
-  window.addToCart = async function(blockId) {
-    const btn = document.getElementById(`ss-add-to-cart-${blockId}`);
-    const container = document.getElementById(`ss-matrix-widget-${blockId}`);
-    const inputs = container.querySelectorAll('.ss-input-field');
+  /* ─── Add to Cart ─── */
+  window.addToCart = function (blockId) {
+    var btn = document.getElementById("ss-add-to-cart-" + blockId);
+    var container = document.getElementById("ss-matrix-widget-" + blockId);
+    var inputs = container.querySelectorAll(".ss-input-field");
+    var items = [];
 
-    const items = [];
-    inputs.forEach(inp => {
-       if (inp.offsetParent === null) return;
-       const qty = parseInt(inp.value) || 0;
-       if (qty > 0) {
-         const item = { id: inp.dataset.variantId, quantity: qty, properties: {} };
-         if (window.uploadedDesigns) {
-            Object.keys(window.uploadedDesigns).forEach(loc => {
-               const d = window.uploadedDesigns[loc];
-               const label = loc.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-               item.properties[`${label} Design`] = d.url;
-            });
-         }
-         items.push(item);
-       }
+    inputs.forEach(function (inp) {
+      if (inp.offsetParent === null) return;
+      var qty = parseInt(inp.value) || 0;
+      if (qty <= 0) return;
+      var item = { id: inp.dataset.variantId, quantity: qty, properties: {} };
+      if (window.uploadedDesigns) {
+        Object.keys(window.uploadedDesigns).forEach(function (loc) {
+          var d = window.uploadedDesigns[loc];
+          var label = loc.split("_").map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(" ");
+          item.properties[label + " Design"] = d.url;
+        });
+      }
+      items.push(item);
     });
 
-    if (items.length === 0) return;
-
-    btn.textContent = 'Adding...';
+    if (!items.length) return;
+    btn.textContent = "Adding...";
     btn.disabled = true;
 
-    try {
-      await fetch('/cart/add.js', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items })
+    fetch("/cart/add.js", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: items })
+    })
+      .then(function () {
+        btn.textContent = "Added ✓";
+        setTimeout(function () { window.location.href = "/cart"; }, 800);
+      })
+      .catch(function (e) {
+        console.error(e);
+        btn.textContent = "Error";
+        setTimeout(function () { btn.textContent = "Add to Cart"; btn.disabled = false; }, 2000);
       });
-      btn.textContent = 'Added!';
-      setTimeout(() => { window.location.href = '/cart'; }, 800);
-    } catch (e) {
-      console.error(e);
-      btn.textContent = 'Error';
-      setTimeout(() => { btn.textContent = 'Add to Cart'; btn.disabled = false; }, 2000);
-    }
   };
 
-  // Upload Logic (Condensed safety version)
-  window.handleFileUpload = async function(input, locationName, blockId) {
-     const file = input.files[0];
-     if (!file) return;
-     const preview = document.getElementById(`preview-${locationName}-${blockId}`);
-     const placeholder = document.getElementById(`placeholder-${locationName}-${blockId}`);
-     const previewImg = preview.querySelector('.ss-preview-image');
+  /* ─── Upload ─── */
+  window.handleFileUpload = function (input, locationName, blockId) {
+    var file = input.files[0];
+    if (!file) return;
+    var preview = document.getElementById("preview-" + locationName + "-" + blockId);
+    var placeholder = document.getElementById("placeholder-" + locationName + "-" + blockId);
+    var origHtml = placeholder.innerHTML;
+    placeholder.innerHTML = '<span class="ss-upload-text">Uploading…</span>';
 
-     const originHtml = placeholder.innerHTML;
-     placeholder.innerHTML = '<span class="ss-upload-text">...</span>';
+    var fd = new FormData();
+    fd.append("file", file);
 
-     const fd = new FormData(); fd.append('file', file);
-     try {
-       const res = await fetch('/apps/ssactiveorder/api/upload', { method:'POST', body:fd });
-       if (!res.ok) throw new Error('Upload server error');
-       const json = await res.json();
-       if (json.success) {
-          window.uploadedDesigns[locationName] = json;
-          placeholder.style.display='none';
-          preview.style.display='flex';
-          if (file.type.startsWith('image')) {
-             previewImg.innerHTML = `<img src="${json.url}" style="width:100%;height:100%;object-fit:cover;border-radius:12px">`;
-          } else {
-             previewImg.innerHTML = '📄';
-          }
-       } else throw new Error(json.error);
-     } catch(e) {
-       console.error(e);
-       alert('Upload Failed: ' + e.message);
-       placeholder.innerHTML = originHtml;
-     }
+    fetch("/apps/ssactiveorder/api/upload", { method: "POST", body: fd })
+      .then(function (r) { if (!r.ok) throw new Error("Upload failed"); return r.json(); })
+      .then(function (json) {
+        if (!json.success) throw new Error(json.error || "Upload error");
+        window.uploadedDesigns[locationName] = json;
+        placeholder.style.display = "none";
+        preview.style.display = "flex";
+        var imgBox = preview.querySelector(".ss-preview-image");
+        if (file.type.startsWith("image")) {
+          imgBox.innerHTML = '<img src="' + json.url + '" style="width:100%;height:100%;object-fit:cover;border-radius:12px" width="120" height="120">';
+        } else {
+          imgBox.innerHTML = "📄";
+        }
+      })
+      .catch(function (e) {
+        console.error(e);
+        alert("Upload Failed: " + e.message);
+        placeholder.innerHTML = origHtml;
+      });
   };
 
-  window.removeUpload = function(loc, bid) {
-     delete window.uploadedDesigns[loc];
-     document.getElementById(`placeholder-${loc}-${bid}`).style.display='flex';
-     document.getElementById(`placeholder-${loc}-${bid}`).innerHTML=`<span class="ss-upload-icon">+</span><span class="ss-upload-text">${loc}</span>`;
-     document.getElementById(`preview-${loc}-${bid}`).style.display='none';
-     document.getElementById(`file-input-${loc}-${bid}`).value = '';
+  window.removeUpload = function (loc, bid) {
+    delete window.uploadedDesigns[loc];
+    var ph = document.getElementById("placeholder-" + loc + "-" + bid);
+    ph.style.display = "flex";
+    ph.innerHTML = '<span class="ss-upload-icon">+</span><span class="ss-upload-text">' + loc + "</span>";
+    document.getElementById("preview-" + loc + "-" + bid).style.display = "none";
+    var fi = document.getElementById("file-input-" + loc + "-" + bid);
+    if (fi) fi.value = "";
   };
-
 })();

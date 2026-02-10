@@ -123,7 +123,17 @@
     </div>
   {%- endif -%}
 
-  <!-- 5. FOOTER: Sticky-like Action Bar -->
+  <!-- 5. PRICE BREAKDOWN ALERT PANEL (Always Visible) -->
+  <div class="ss-breakdown-panel" id="ss-breakdown-{{ block.id }}" style="display:none;">
+    <div class="ss-breakdown-header">
+      <span class="ss-breakdown-icon">🏷️</span>
+      <span class="ss-breakdown-title" id="ss-breakdown-title-{{ block.id }}">Volume Discount Applied</span>
+    </div>
+    <div class="ss-breakdown-body" id="ss-breakdown-body-{{ block.id }}"></div>
+    <div class="ss-breakdown-alert" id="ss-breakdown-alert-{{ block.id }}" style="display:none;"></div>
+  </div>
+
+  <!-- 6. FOOTER: Sticky-like Action Bar -->
   <div class="ss-footer">
     <div class="ss-total-wrapper">
       <span class="ss-total-label">Total</span>
@@ -508,6 +518,67 @@
   cursor: not-allowed;
 }
 
+/* ─── BREAKDOWN PANEL ─── */
+.ss-breakdown-panel {
+  background: linear-gradient(135deg, #f0f9ff, #e8f4fd);
+  border: 1px solid #bae6fd;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 20px 0;
+}
+.ss-breakdown-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-weight: 700;
+  font-size: 14px;
+  color: #0369a1;
+}
+.ss-breakdown-icon {
+  font-size: 18px;
+}
+.ss-breakdown-body {
+  font-size: 12px;
+  color: #334155;
+  line-height: 1.8;
+}
+.ss-breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+}
+.ss-breakdown-row.total-row {
+  border-top: 1px solid #93c5fd;
+  margin-top: 6px;
+  padding-top: 6px;
+  font-weight: 700;
+  font-size: 13px;
+  color: #111;
+}
+.ss-breakdown-alert {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: #fef9c3;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  font-size: 11px;
+  color: #92400e;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ss-savings-badge {
+  display: inline-block;
+  background: #dcfce7;
+  color: #166534;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 6px;
+}
+
 /* Spinner Animation */
 .ss-spinner {
   display: inline-block;
@@ -535,7 +606,7 @@
 }
 </style>
 
-<script src="{{ 'matrix.js' | asset_url }}" defer></script>
+<script src="{{ 'matrix.js' | asset_url }}?v={{ "now" | date: "%N" }}" defer></script>
 
 {% schema %}
 {
