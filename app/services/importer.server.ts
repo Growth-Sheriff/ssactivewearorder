@@ -17,8 +17,11 @@ interface ImportResult {
 }
 
 export class ImporterService {
-  async importStyle(admin: any, styleId: number, shop: string): Promise<ImportResult> {
+  async importStyle(admin: any, styleId: number, shop: string, sizeMarkups?: Record<string, { type: string; value: number }>): Promise<ImportResult> {
     console.log(`[Importer] Starting import for style ${styleId}`);
+    if (sizeMarkups && Object.keys(sizeMarkups).length > 0) {
+      console.log(`[Importer] Size markups:`, JSON.stringify(sizeMarkups));
+    }
 
     // 1. Fetch data
     const styleDetails = await ssClient.getStyleDetails(styleId);
@@ -39,13 +42,13 @@ export class ImporterService {
     const remainingBatches = normalizedProducts.slice(PRODUCT_SET_MAX);
 
     // 4. Create product with first batch using productSet
-    const { productId, createdCount: initialCreated } = await this.createProductWithFirstBatch(admin, style, firstBatch, uniqueColors, uniqueSizes);
+    const { productId, createdCount: initialCreated } = await this.createProductWithFirstBatch(admin, style, firstBatch, uniqueColors, uniqueSizes, sizeMarkups);
     console.log(`[Importer] Product created: ${productId} with ${initialCreated}/${firstBatch.length} initial variants`);
 
     // 5. Add remaining variants in batches using productVariantsBulkCreate
     let additionalCreated = 0;
     if (remainingBatches.length > 0) {
-      additionalCreated = await this.addRemainingVariants(admin, productId, remainingBatches);
+      additionalCreated = await this.addRemainingVariants(admin, productId, remainingBatches, sizeMarkups);
       console.log(`[Importer] Added ${additionalCreated} additional variants`);
     }
 
@@ -140,18 +143,31 @@ export class ImporterService {
     };
   }
 
+  private applyMarkup(basePrice: number, sizeName: string, sizeMarkups?: Record<string, { type: string; value: number }>): number {
+    if (!sizeMarkups) return basePrice;
+    const markup = sizeMarkups[sizeName] || sizeMarkups[sizeName.trim()];
+    if (!markup || !markup.value || markup.value === 0) return basePrice;
+    if (markup.type === 'percentage') {
+      return basePrice + (basePrice * markup.value / 100);
+    }
+    return basePrice + markup.value;
+  }
+
   private async createProductWithFirstBatch(
     admin: any,
     style: any,
     products: any[],
     colors: string[],
-    sizes: string[]
+    sizes: string[],
+    sizeMarkups?: Record<string, { type: string; value: number }>
   ): Promise<{ productId: string; createdCount: number }> {
     // ProductVariantSetInput - sku is direct field
-    const variants = products.map(p => ({
+    const variants = products.map(p => {
+      const finalPrice = this.applyMarkup(p.piecePrice || 0, p.normalizedSize, sizeMarkups);
+      return {
       sku: p.sku,
-      price: (p.piecePrice || 0).toFixed(2),
-      compareAtPrice: p.mapPrice && p.mapPrice > (p.piecePrice || 0) ? p.mapPrice.toFixed(2) : undefined,
+      price: finalPrice.toFixed(2),
+      compareAtPrice: p.mapPrice && p.mapPrice > finalPrice ? p.mapPrice.toFixed(2) : undefined,
       barcode: p.gtin || undefined,
       inventoryPolicy: "DENY",
       inventoryItem: { tracked: true }, // Enable tracking
@@ -159,7 +175,7 @@ export class ImporterService {
         { optionName: "Color", name: p.normalizedColor },
         { optionName: "Size", name: p.normalizedSize },
       ],
-    }));
+    }});
 
     // Use ASYNCHRONOUS mode to avoid timeout!
     const response = await admin.graphql(`
@@ -273,7 +289,7 @@ export class ImporterService {
     throw new Error("productSet operation timed out after 5 minutes");
   }
 
-  private async addRemainingVariants(admin: any, productId: string, products: any[]): Promise<number> {
+  private async addRemainingVariants(admin: any, productId: string, products: any[], sizeMarkups?: Record<string, { type: string; value: number }>): Promise<number> {
     let totalCreated = 0;
 
     for (let i = 0; i < products.length; i += BULK_BATCH_SIZE) {
@@ -281,17 +297,19 @@ export class ImporterService {
       const batchNum = Math.floor(i / BULK_BATCH_SIZE) + 1;
 
       // ProductVariantsBulkInput - sku MUST be inside inventoryItem (per Shopify 2025-10 docs)
-      const variants = batch.map(p => ({
+      const variants = batch.map(p => {
+        const finalPrice = this.applyMarkup(p.piecePrice || 0, p.normalizedSize, sizeMarkups);
+        return {
         inventoryItem: { sku: p.sku, tracked: true },
-        price: (p.piecePrice || 0).toFixed(2),
-        compareAtPrice: p.mapPrice && p.mapPrice > (p.piecePrice || 0) ? p.mapPrice.toFixed(2) : undefined,
+        price: finalPrice.toFixed(2),
+        compareAtPrice: p.mapPrice && p.mapPrice > finalPrice ? p.mapPrice.toFixed(2) : undefined,
         barcode: p.gtin || undefined,
         inventoryPolicy: "DENY",
         optionValues: [
           { optionName: "Color", name: p.normalizedColor },
           { optionName: "Size", name: p.normalizedSize },
         ],
-      }));
+      }});
 
       try {
         const response = await admin.graphql(`
