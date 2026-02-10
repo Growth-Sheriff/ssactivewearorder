@@ -1,1410 +1,440 @@
-{% schema %}
-{
-  "name": "SSActive Bulk Order",
-  "target": "section",
-  "templates": ["product"],
-  "settings": [
-    {
-      "type": "header",
-      "content": "Appearance"
-    },
-    {
-      "type": "color",
-      "id": "primary_color",
-      "label": "Primary Color",
-      "default": "#000000"
-    },
-    {
-      "type": "color",
-      "id": "accent_color",
-      "label": "Accent/Success Color",
-      "default": "#4CAF50"
-    },
-    {
-      "type": "header",
-      "content": "Features"
-    },
-    {
-      "type": "checkbox",
-      "id": "show_warehouse",
-      "label": "Show Warehouse Details",
-      "default": false,
-      "info": "Display stock breakdown by warehouse location"
-    },
-    {
-      "type": "text",
-      "id": "button_text",
-      "label": "Add to Cart Button Text",
-      "default": "Add Selected to Cart"
-    },
-    {
-      "type": "text",
-      "id": "widget_title",
-      "label": "Widget Title",
-      "default": "Bulk Order - Select Variants"
-    }
-  ]
-}
-{% endschema %}
-
-<style>
-/*
- * ═══════════════════════════════════════════════════════════════
- *  CSS ISOLATION LAYER
- *  This widget is fully isolated from the Shopify theme.
- *  - all: initial  → cuts ALL inherited/theme styles
- *  - isolation      → separate stacking context
- *  - contain        → layout & paint containment
- *  All selectors are scoped under .ss-bulk-order-widget
- *  so nothing leaks out into the theme.
- * ═══════════════════════════════════════════════════════════════
- */
-
-/* Root isolation — resets EVERYTHING inherited from theme */
-.ss-bulk-order-widget {
-  all: initial;
-  display: block;
-  contain: content;
-  isolation: isolate;
-
-  /* Re-establish our own base styles */
-  width: 100%;
-  background: #ffffff;
-  /* Modern clean reset with soft shadow */
-  padding: 32px;
-  border: 1px solid #e2e8f0;
-  border-radius: 24px;
-  margin: 32px 0;
-  box-shadow: 0 10px 40px -10px rgba(0,0,0,0.05);
-  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'SF Pro Display', system-ui, sans-serif;
-  font-size: 14px;
-  color: #334155;
-  line-height: 1.6;
-  font-weight: 400;
-  letter-spacing: normal;
-  text-align: left;
-  text-transform: none;
-  text-decoration: none;
-  word-spacing: normal;
-  white-space: normal;
-  direction: ltr;
-  -webkit-text-size-adjust: 100%;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  max-width: 100%;
-  box-sizing: border-box;
-  overflow: hidden;
-}
-
-/* Reset ALL child elements — prevent theme bleeding in */
-.ss-bulk-order-widget *,
-.ss-bulk-order-widget *::before,
-.ss-bulk-order-widget *::after {
-  box-sizing: border-box;
-  font-family: inherit;
-  line-height: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
-  -webkit-font-smoothing: inherit;
-  -moz-osx-font-smoothing: inherit;
-  min-width: 0;
-  max-width: 100%;
-}
-
-/* Reset common HTML elements to prevent theme overrides */
-.ss-bulk-order-widget h1,
-.ss-bulk-order-widget h2,
-.ss-bulk-order-widget h3,
-.ss-bulk-order-widget h4,
-.ss-bulk-order-widget h5,
-.ss-bulk-order-widget h6 {
-  margin: 0;
-  padding: 0;
-  font-family: inherit;
-  font-weight: 600;
-  line-height: 1.3;
-  color: inherit;
-  letter-spacing: normal;
-  text-transform: none;
-}
-
-.ss-bulk-order-widget p {
-  margin: 0;
-  padding: 0;
-  font-size: inherit;
-  line-height: inherit;
-  color: inherit;
-}
-
-.ss-bulk-order-widget a {
-  color: inherit;
-  text-decoration: none;
-}
-
-.ss-bulk-order-widget img {
-  max-width: 100%;
-  height: auto;
-  display: block;
-  border: none;
-}
-
-.ss-bulk-order-widget button,
-.ss-bulk-order-widget input,
-.ss-bulk-order-widget select,
-.ss-bulk-order-widget textarea {
-  font-family: inherit;
-  font-size: inherit;
-  line-height: inherit;
-  color: inherit;
-  margin: 0;
-  padding: 0;
-  border: none;
-  background: none;
-  outline: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  appearance: none;
-}
-
-.ss-bulk-order-widget input[type="number"] {
-  -moz-appearance: textfield;
-}
-
-.ss-bulk-order-widget input[type="number"]::-webkit-inner-spin-button,
-.ss-bulk-order-widget input[type="number"]::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-.ss-bulk-order-widget input[type="file"] {
-  display: none;
-}
-
-.ss-bulk-order-widget svg {
-  display: inline-block;
-  vertical-align: middle;
-  fill: currentColor;
-}
-
-.ss-bulk-order-widget div {
-  margin: 0;
-  padding: 0;
-}
-
-.ss-bulk-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 28px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.ss-bulk-header h3 {
-  font-size: 20px;
-  font-weight: 700;
-  margin: 0;
-  color: #0f172a;
-  letter-spacing: -0.02em;
-}
-
-/* Loading State */
-.ss-loading {
-  text-align: center;
-  padding: 60px 20px;
-  color: #637381;
-}
-
-.ss-loading-spinner {
-  display: inline-block;
-  width: 40px;
-  height: 40px;
-  border: 3px solid #e1e3e5;
-  border-top-color: {{ block.settings.primary_color | default: '#000' }};
-  border-radius: 50%;
-  animation: ss-spin 0.8s linear infinite;
-}
-
-@keyframes ss-spin {
-  to { transform: rotate(360deg); }
-}
-
-/* Section Titles */
-.ss-section {
-  margin-bottom: 24px;
-}
-
-.ss-section-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 16px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Color Grid - Variant Images */
-.ss-color-grid-wrapper {
-  position: relative;
-  max-width: 100%;
-}
-
-.ss-color-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: flex-start;
-}
-
-.ss-color-card {
-  width: 32px;
-  height: 32px;
-  cursor: pointer;
-  border: 2px solid transparent; /* Invisible border unless selected */
-  border-radius: 50%; /* CIRCLE */
-  padding: 2px;
-  text-align: center;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  background: transparent;
-  position: relative;
-}
-
-.ss-color-card:hover {
-  transform: scale(1.1);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
-
-.ss-color-card.ss-color-selected {
-  border-color: {{ block.settings.primary_color | default: '#000' }};
-  box-shadow: 0 0 0 2px {{ block.settings.primary_color | default: '#000' }}30;
-  transform: scale(1.05);
-}
-
-.ss-color-image {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%; /* CIRCLE */
-  overflow: hidden;
-  background: #f1f5f9;
-}
-
-.ss-color-image img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: 50%;
-}
-
-.ss-no-image {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  color: #999;
-}
-
-.ss-color-name {
-  display: none; /* Always hide text for clean circles */
-}
-
-/* Sizes Section */
-.ss-sizes-section {
-  margin-bottom: 24px;
-  max-width: 100%;
-}
-
-.ss-sizes-section.ss-hidden {
-  display: none;
-}
-
-.ss-sizes-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  gap: 12px;
-  max-width: 100%;
-}
-
-/* Modern size cards */
-.ss-size-card {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 16px;
-  text-align: center;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  height: 100%;
-}
-
-.ss-size-card:hover:not(.ss-size-out):not(.ss-size-unavailable) {
-  background: #ffffff;
-  border-color: {{ block.settings.primary_color | default: '#000' }};
-  box-shadow: 0 4px 12px -2px rgba(0,0,0,0.05);
-  transform: translateY(-2px);
-}
-
-.ss-size-input {
-  width: 100%;
-  max-width: 100%;
-  padding: 12px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  text-align: center;
-  font-size: 16px;
-  font-weight: 600;
-  color: #0f172a;
-  background: #fff;
-  transition: all 0.2s;
-  margin-bottom: 8px;
-  box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
-}
-
-.ss-size-input:focus {
-  outline: none;
-  border-color: {{ block.settings.primary_color | default: '#000' }};
-  box-shadow: 0 0 0 3px {{ block.settings.primary_color | default: '#000' }}15;
-}
-
-.ss-size-input.ss-disabled {
-  background: #f0f0f0;
-  cursor: not-allowed;
-  color: #999;
-}
-
-.ss-size-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 4px;
-}
-
-.ss-size-stock {
-  font-size: 12px;
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: 4px;
-  display: inline-block;
-}
-
-.ss-size-stock.ss-stock-high { background: #E3F5E1; color: #1B7F1B; }
-.ss-size-stock.ss-stock-medium { background: #FFF8E1; color: #B86E00; }
-.ss-size-stock.ss-stock-low { background: #FFE5E5; color: #CC0000; }
-.ss-size-stock.ss-stock-out { background: #f0f0f0; color: #999; }
-
-.ss-size-price {
-  font-size: 11px;
-  color: #637381;
-  margin-top: 4px;
-}
-
-.ss-warehouse-details {
-  font-size: 10px;
-  color: #999;
-  margin-top: 4px;
-}
-
-/* ═══════════════════════════════════════════════════════════════
- *  MOBILE — Ultra Soft Premium UX
- *  No hard borders. Soft backgrounds + subtle shadows.
- *  Everything floats in its own space.
- * ═══════════════════════════════════════════════════════════════ */
-@media (max-width: 768px) {
-
-  /* ── Container: soft shadow, no hard border ── */
-  .ss-bulk-order-widget {
-    padding: 16px;
-    border: none;
-    border-radius: 16px;
-    margin: 10px 0;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 14px rgba(0,0,0,0.03);
-  }
-
-  /* ── Header: breathing room ── */
-  .ss-bulk-header {
-    margin-bottom: 18px;
-    padding-bottom: 14px;
-    gap: 10px;
-    border-bottom: 1px solid #f0f1f3;
-  }
-
-  .ss-bulk-header h3 {
-    font-size: 16px;
-    font-weight: 600;
-    color: #1a1a1a;
-  }
-
-  /* ── Section spacing ── */
-  .ss-section {
-    margin-bottom: 20px;
-  }
-
-  .ss-section-title {
-    font-size: 11px;
-    font-weight: 600;
-    margin-bottom: 10px;
-    letter-spacing: 0.5px;
-    color: #9ca3af;
-  }
-
-  /* ── Color grid: 7/row, soft cards, scrollable ── */
-  .ss-color-grid-wrapper {
-    max-height: 220px;
-    overflow-y: auto;
-    overflow-x: hidden;
-    -webkit-overflow-scrolling: touch;
-    border-radius: 10px;
-    scrollbar-width: thin;
-    scrollbar-color: #e5e7eb transparent;
-  }
-
-  .ss-color-grid-wrapper::-webkit-scrollbar {
-    width: 3px;
-  }
-
-  .ss-color-grid-wrapper::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .ss-color-grid-wrapper::-webkit-scrollbar-thumb {
-    background: #d1d5db;
-    border-radius: 3px;
-  }
-
-  .ss-color-grid {
-    gap: 4px;
-    padding-right: 0;
-    justify-content: flex-start;
-  }
-
-  .ss-color-card {
-    width: 30px;
-    padding: 2px;
-    border-radius: 4px;
-  }
-
-  .ss-color-card.ss-color-selected {
-    background: #ffffff;
-    box-shadow: 0 0 0 2px {{ block.settings.primary_color | default: '#000' }}, 0 2px 8px rgba(0,0,0,0.06);
-  }
-
-  .ss-color-card:hover {
-    transform: none;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
-  }
-
-  .ss-color-image {
-    width: 100%;
-    aspect-ratio: 1;
-    border-radius: 6px;
-    margin-bottom: 2px;
-    overflow: hidden;
-  }
-
-  .ss-color-name {
-    display: none; /* Hide name on mobile for compact 30px view */
-  }
-    line-height: 1.1;
-    font-weight: 500;
-    color: #6b7280;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  /* ── Sizes: 3-col, soft floating cards ── */
-  .ss-sizes-section {
-    margin-bottom: 20px;
-  }
-
-  .ss-sizes-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  .ss-size-card {
-    padding: 10px 6px;
-    border: none;
-    border-radius: 12px;
-    background: #f7f8fa;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
-  }
-
-  .ss-size-card:hover:not(.ss-size-out):not(.ss-size-unavailable) {
-    background: #f0f1f4;
-  }
-
-  .ss-size-card.ss-size-out {
-    opacity: 0.45;
-    background: #fafafa;
-  }
-
-  .ss-size-card.ss-size-unavailable {
-    opacity: 0.35;
-    background: transparent;
-    border: 1px dashed #e0e2e6;
-  }
-
-  .ss-size-input {
-    padding: 6px;
-    font-size: 14px;
-    font-weight: 600;
-    max-width: 44px;
-    border: 1.5px solid #e5e7eb;
-    border-radius: 8px;
-    background: #ffffff;
-    margin-bottom: 4px;
-    text-align: center;
-  }
-
-  .ss-size-input:focus {
-    border-color: {{ block.settings.primary_color | default: '#000' }};
-    box-shadow: 0 0 0 3px {{ block.settings.primary_color | default: '#000' }}12;
-  }
-
-  .ss-size-name {
-    font-size: 12px;
-    font-weight: 600;
-    margin-bottom: 3px;
-    color: #374151;
-  }
-
-  .ss-size-stock {
-    font-size: 9px;
-    padding: 1px 6px;
-    border-radius: 6px;
-  }
-
-  .ss-size-price {
-    font-size: 10px;
-    margin-top: 3px;
-    color: #9ca3af;
-  }
-
-  /* ── Upload: 3 columns, compact, soft ── */
-  .ss-upload-section {
-    margin-top: 4px;
-    margin-bottom: 8px;
-  }
-
-  .ss-upload-section-header {
-    font-size: 13px;
-    font-weight: 600;
-    margin-bottom: 10px;
-    padding-bottom: 8px;
-    gap: 6px;
-    border-bottom: 1px solid #f0f1f3;
-  }
-
-  .ss-upload-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important; /* 2 cols on mobile for better space */
-    gap: 10px;
-  }
-
-  .ss-upload-area {
-    min-height: 76px;
-    padding: 10px 4px 8px;
-    border: none;
-    border-radius: 12px;
-    background: #f4f6f9;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
-  }
-
-  .ss-upload-area:hover {
-    transform: none;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
-  }
-
-  .ss-upload-area:active {
-    background: #ebedf1;
-  }
-
-  .ss-tshirt-icon {
-    width: 30px;
-    height: 30px;
-    border-radius: 6px;
-    margin-bottom: 2px;
-    background: #e8edf2;
-  }
-
-  .ss-tshirt-icon svg {
-    width: 22px;
-    height: 22px;
-  }
-
-  .ss-upload-loc-name {
-    font-size: 10px;
-    font-weight: 600;
-    color: #4b5563;
-  }
-
-  .ss-upload-placeholder p {
-    font-size: 10px;
-    color: #9ca3af;
-  }
-
-  .ss-upload-placeholder span {
-    display: none;  /* hide "or drag & drop" on mobile */
-  }
-
-  .ss-upload-preview img {
-    width: 36px;
-    height: 36px;
-    border-radius: 6px;
-  }
-
-  .ss-upload-info span {
-    font-size: 9px;
-    max-width: 80px;
-  }
-
-  .ss-remove-design {
-    padding: 2px 6px;
-    font-size: 9px;
-    border-radius: 4px;
-  }
-
-  /* ── Footer: Order Summary ── */
-  .ss-order-summary {
-    padding: 14px;
-    margin: 18px 0 12px;
-    border-radius: 12px;
-    background: #f8f9fb;
-    box-shadow: none;
-  }
-
-  .ss-summary-row {
-    margin-bottom: 8px;
-  }
-
-  .ss-summary-label {
-    font-size: 12px;
-    color: #9ca3af;
-  }
-
-  .ss-summary-value {
-    font-size: 16px;
-    font-weight: 600;
-  }
-
-  .ss-total-price {
-    font-size: 20px;
-  }
-
-  /* ── Add to Cart: full, rounded, glowing ── */
-  .ss-add-to-cart-btn {
-    padding: 16px;
-    font-size: 16px;
-    font-weight: 700;
-    border-radius: 50px; /* Pill shape */
-    gap: 10px;
-    box-shadow: 0 4px 15px {{ block.settings.primary_color | default: '#000' }}40;
-    width: 100%;
-    margin-top: 10px;
-  }
-}
-
-/* ── Extra small screens ── */
-@media (max-width: 400px) {
-  .ss-bulk-order-widget {
-    padding: 12px;
-    border-radius: 12px;
-    margin: 6px 0;
-  }
-
-  .ss-color-grid-wrapper {
-    max-height: 180px;
-  }
-
-  .ss-color-grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 3px;
-  }
-
-  .ss-color-card {
-    padding: 2px;
-    border-radius: 6px;
-  }
-
-  .ss-color-name {
-    font-size: 6px;
-  }
-
-  .ss-sizes-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
-  }
-
-  .ss-size-card {
-    padding: 8px 4px;
-  }
-
-  .ss-size-input {
-    padding: 5px;
-    font-size: 13px;
-    max-width: 40px;
-  }
-
-  .ss-size-name {
-    font-size: 11px;
-  }
-
-  .ss-upload-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    gap: 6px;
-  }
-
-  .ss-upload-area {
-    min-height: 68px;
-    padding: 8px 3px 6px;
-  }
-
-  .ss-tshirt-icon {
-    width: 26px;
-    height: 26px;
-  }
-
-  .ss-tshirt-icon svg {
-    width: 18px;
-    height: 18px;
-  }
-
-  .ss-upload-loc-name {
-    font-size: 9px;
-  }
-
-  .ss-add-to-cart-btn {
-    padding: 12px;
-    font-size: 14px;
-    border-radius: 10px;
-  }
-}
-
-/* Utility Classes */
-.ss-hidden {
-  display: none !important;
-}
-
-/* Upload Section Modern */
-.ss-upload-section {
-  margin-top: 24px;
-  margin-bottom: 16px;
-}
-
-.ss-upload-section-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 14px;
-  font-weight: 700;
-  color: #1e293b;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.ss-upload-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); /* More responsive */
-  gap: 12px;
-}
-
-
-
-.ss-upload-location {
-  display: flex;
-  flex-direction: column;
-}
-
-/* Modern Upload Area */
-.ss-upload-area {
-  position: relative;
-  border: 1px dashed #cbd5e1; /* Dashed elegant */
-  border-radius: 12px;
-  padding: 24px 16px;
-  text-align: center;
-  cursor: pointer;
-  transition: all 0.25s ease;
-  background: #f8fafc; /* Very light slate */
-  min-height: 140px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.ss-upload-area:hover {
-  border-color: {{ block.settings.primary_color | default: '#14b8a6' }};
-  background: #f0f9ff;
-  border-style: solid;
-}
-
-.ss-upload-area:hover {
-  border-color: {{ block.settings.primary_color | default: '#14b8a6' }};
-  box-shadow: 0 4px 16px rgba(0,0,0,0.06);
-  transform: translateY(-2px);
-}
-
-.ss-upload-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-}
-
-.ss-tshirt-icon {
-  background: #f1f5f9;
-  border-radius: 12px;
-  width: 80px;
-  height: 80px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 4px;
-  transition: transform 0.3s ease;
-}
-
-.ss-upload-area:hover .ss-tshirt-icon {
-  transform: scale(1.08);
-}
-
-.ss-upload-loc-name {
-  font-size: 15px;
-  font-weight: 700;
-  color: #1e293b;
-  margin: 0;
-  letter-spacing: -0.01em;
-}
-
-.ss-upload-preview {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  animation: ss-fade-in 0.3s ease;
-}
-
-@keyframes ss-fade-in {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-.ss-upload-preview img {
-  width: 100px;
-  height: 100px;
-  object-fit: contain;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-  background: white;
-  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
-}
-
-.ss-upload-info {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-}
-
-.ss-upload-info span {
-  font-size: 13px;
-  font-weight: 600;
-  color: #334155;
-  max-width: 180px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ss-remove-design {
-  background: #fee2e2;
-  color: #dc2626;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  padding: 4px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.ss-remove-design:hover {
-  background: #dc2626;
-  color: white;
-}
-
-.ss-upload-area.ss-upload-dragover {
-  border-color: {{ block.settings.primary_color | default: '#14b8a6' }};
-  background: #f0fdfa;
-}
-
-.ss-upload-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  color: #666;
-}
-
-.ss-upload-placeholder svg {
-  color: #999;
-}
-
-.ss-upload-placeholder p {
-  margin: 0;
-  font-weight: 500;
-}
-
-.ss-upload-placeholder span {
-  font-size: 12px;
-  color: #999;
-}
-
-.ss-upload-preview {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.ss-upload-preview img {
-  width: 80px;
-  height: 80px;
-  object-fit: contain;
-  border-radius: 8px;
-  border: 1px solid #e1e3e5;
-  background: white;
-}
-
-.ss-upload-info {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.ss-upload-info span {
-  font-weight: 500;
-  color: #333;
-}
-
-.ss-remove-design {
-  background: none;
-  border: 1px solid #EF4444;
-  color: #EF4444;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.ss-remove-design:hover {
-  background: #EF4444;
-  color: white;
-}
-
-/* Order Summary */
-.ss-order-summary {
-  background: linear-gradient(135deg, #f8f9fa 0%, #f0f2f5 100%);
-  border-radius: 12px;
-  padding: 20px;
-  margin: 20px 0;
-}
-
-.ss-summary-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.ss-summary-row:last-child {
-  margin-bottom: 0;
-}
-
-.ss-summary-label {
-  font-size: 14px;
-  color: #637381;
-}
-
-.ss-summary-value {
-  font-size: 18px;
-  font-weight: 700;
-  color: {{ block.settings.primary_color | default: '#000' }};
-}
-
-.ss-total-price {
-  font-size: 24px;
-}
-
-/* Modern Add to Cart */
-.ss-add-to-cart-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  width: 100%;
-  padding: 18px 24px;
-  background: {{ block.settings.primary_color | default: '#000' }};
-  background: linear-gradient(135deg, {{ block.settings.primary_color | default: '#000' }} 0%, {{ block.settings.primary_color | default: '#333' }} 100%);
-  color: white;
-  border: none;
-  border-radius: 50px; /* Full pill */
-  font-size: 16px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-top: 10px;
-}
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  width: 100%;
-  padding: 16px 24px;
-  background: {{ block.settings.primary_color | default: '#000' }};
-  color: white;
-  border: none;
-  border-radius: 12px;
-  font-size: 16px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.ss-add-to-cart-btn:hover:not(:disabled) {
-  opacity: 0.9;
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px {{ block.settings.primary_color | default: '#000' }}40;
-}
-
-.ss-add-to-cart-btn:disabled {
-  background: #ccc;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-.ss-btn-spinner {
-  display: inline-block;
-  width: 18px;
-  height: 18px;
-  border: 2px solid rgba(255,255,255,0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: ss-spin 0.6s linear infinite;
-}
-
-/*
- * Toast Notifications — positioned OUTSIDE the contained widget.
- * These are appended to <body> by JS, so they must NOT be scoped
- * under .ss-bulk-order-widget (contain:content breaks position:fixed).
- */
-.ss-toast {
-  all: initial;
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 24px;
-  border-radius: 12px;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'SF Pro', system-ui, sans-serif;
-  font-size: 14px;
-  font-weight: 500;
-  z-index: 10000;
-  animation: ss-toast-in 0.3s ease;
-  box-shadow: 0 8px 30px rgba(0,0,0,0.2);
-  box-sizing: border-box;
-}
-
-.ss-toast-success {
-  background: {{ block.settings.accent_color | default: '#4CAF50' }};
-  color: white;
-}
-
-.ss-toast-error {
-  background: #EF4444;
-  color: white;
-}
-
-@keyframes ss-toast-in {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-}
-
-/* Error State */
-.ss-bulk-order-widget .ss-error {
-  background: #FEF2F2;
-  border: 1px solid #FECACA;
-  border-radius: 8px;
-  padding: 16px;
-  color: #991B1B;
-  text-align: center;
-}
-
-.ss-bulk-order-widget .ss-error p {
-  margin: 0;
-}
-
-/* ─── Volume Pricing Table ─── */
-.ss-volume-pricing {
-  margin: 20px 0;
-  border: 2px solid #e2e8f0;
-  border-radius: 14px;
-  overflow: hidden;
-  background: #fff;
-}
-
-.ss-volume-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
-  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
-  border-bottom: 2px solid #bbf7d0;
-  font-weight: 700;
-  font-size: 14px;
-  color: #166534;
-}
-
-.ss-volume-header svg {
-  flex-shrink: 0;
-}
-
-.ss-volume-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.ss-volume-table th {
-  padding: 10px 8px;
-  font-size: 12px;
-  font-weight: 700;
-  text-align: center;
-  color: #475569;
-  background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
-  letter-spacing: 0.02em;
-}
-
-.ss-volume-table th:first-child {
-  text-align: left;
-  padding-left: 16px;
-}
-
-.ss-volume-table td {
-  padding: 10px 8px;
-  font-size: 14px;
-  text-align: center;
-  border-bottom: 1px solid #f1f5f9;
-  transition: background 0.2s;
-}
-
-.ss-volume-table td:first-child {
-  text-align: left;
-  padding-left: 16px;
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.ss-volume-table tr:hover td {
-  background: #f0fdf4;
-}
-
-.ss-volume-table .ss-tier-active {
-  background: #dcfce7;
-  font-weight: 700;
-  color: #166534;
-}
-
-.ss-volume-table .ss-price-cell {
-  font-weight: 600;
-  color: #059669;
-}
-
-.ss-volume-table .ss-price-cell.ss-base {
-  color: #475569;
-}
-
-.ss-volume-banner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
-  border-top: 1px solid #bbf7d0;
-  font-size: 13px;
-  color: #15803d;
-}
-
-.ss-volume-banner strong {
-  font-weight: 700;
-  color: #166534;
-}
-
-@media (max-width: 480px) {
-  .ss-volume-table th,
-  .ss-volume-table td {
-    padding: 8px 4px;
-    font-size: 11px;
-  }
-
-  .ss-volume-header {
-    font-size: 13px;
-    padding: 10px 12px;
-  }
-}
-</style>
-
-<div class="ss-bulk-order-widget"
+<div class="ss-clean-widget"
      id="ss-matrix-widget-{{ block.id }}"
      data-variants='{{ product.variants | json | escape }}'
      data-product-id="{{ product.id }}"
      data-show-warehouse="{{ block.settings.show_warehouse }}"
      data-button-text="{{ block.settings.button_text }}">
 
-  <div class="ss-bulk-header">
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{{ block.settings.primary_color | default: '#000' }}" stroke-width="2">
-      <rect x="1" y="3" width="15" height="13"></rect>
-      <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
-      <circle cx="5.5" cy="18.5" r="2.5"></circle>
-      <circle cx="18.5" cy="18.5" r="2.5"></circle>
-    </svg>
-    <h3>{{ block.settings.widget_title }}</h3>
-  </div>
-
-  <div class="ss-loading" id="ss-loading-{{ block.id }}">
-    <div class="ss-loading-spinner"></div>
-    <p style="margin-top: 12px;">Loading inventory...</p>
-  </div>
-
-  <div class="ss-content" id="ss-content-{{ block.id }}" style="display: none;">
-    <!-- Variant selection rendered by JS -->
-  </div>
-
-  <!-- Volume Pricing Table -->
-  {%- assign volume_data = product.metafields.ss_pricing.volume_tiers.value -%}
-  {%- if volume_data != blank -%}
-  <div class="ss-volume-pricing" id="ss-volume-{{ block.id }}" style="display: none;"
-       data-volume-tiers='{{ product.metafields.ss_pricing.volume_tiers | json | escape }}'>
-    <div class="ss-volume-header">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-      </svg>
-      <span>Quantity Pricing</span>
-    </div>
-    <div id="ss-volume-table-{{ block.id }}">
-      <!-- Rendered by JS based on metafield data -->
-    </div>
-    <div class="ss-volume-banner">
-      <span style="font-size: 18px;">💰</span>
-      <div>
-        <strong>Buy more, save more!</strong>
-        Save $ on the price per item when you increase your order quantity.
-      </div>
+  <!-- 1. HEADER: Ultra Minimalist -->
+  <div class="ss-header">
+    <h3 class="ss-title">{{ block.settings.widget_title | default: 'Quick Order' }}</h3>
+    <div class="ss-loading" style="display:none;">
+      <span class="ss-spinner"></span>
     </div>
   </div>
-  {%- endif -%}
 
-  <!-- Dynamic Upload Locations – reads from PRODUCT metafield (set per product in merchant panel) -->
-  {%- assign upload_locations = product.metafields.ss_custom.upload_locations.value -%}
-  {%- if upload_locations == blank -%}
-    {%- comment -%}Fallback: try shop-level, then default{%- endcomment -%}
-    {%- assign upload_locations = shop.metafields.ss_custom.upload_locations.value -%}
-  {%- endif -%}
+  <!-- 2. COLOR SELECTION: Modern Floating Circles -->
+  <!-- Logic: Get unique colors safely using 'map' and 'uniq' filters -->
+  {% assign unique_colors = product.variants | map: 'option1' | uniq %}
 
-  {%- if upload_locations != blank and upload_locations.size > 0 -%}
-  <div class="ss-upload-section" id="ss-upload-{{ block.id }}" style="display: none;">
-    <div class="ss-upload-section-header">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4m4-5l5-5 5 5m-5-5v12"></path></svg>
-      <span>Upload Your Designs</span>
-    </div>
-    <div class="ss-upload-grid">
-      {% for location in upload_locations %}
-        <div class="ss-upload-location" data-location-name="{{ location.name }}">
-          <div class="ss-upload-area" id="upload-area-{{ location.name }}-{{ block.id }}" onclick="document.getElementById('file-input-{{ location.name }}-{{ block.id }}').click()">
-            <!-- T-shirt Icon with highlighted print zone -->
-            <div class="ss-upload-placeholder" id="placeholder-{{ location.name }}-{{ block.id }}">
-              <div class="ss-tshirt-icon">
-                <svg width="64" height="64" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M30 25 L20 30 L10 45 L22 50 L25 40 L25 85 L75 85 L75 40 L78 50 L90 45 L80 30 L70 25 L62 20 L38 20 L30 25Z"
-                        fill="#f1f5f9" stroke="#94a3b8" stroke-width="2" stroke-linejoin="round"/>
-                  <path d="M38 20 Q50 28 62 20" fill="none" stroke="#94a3b8" stroke-width="2"/>
-                  {% case location.icon %}
-                    {% when 'full_front' %}
-                      <rect x="30" y="35" width="40" height="40" rx="4" fill="#5eead4" fill-opacity="0.5" stroke="#14b8a6" stroke-width="1.5"/>
-                    {% when 'full_back' %}
-                      <rect x="30" y="35" width="40" height="40" rx="4" fill="#818cf8" fill-opacity="0.5" stroke="#6366f1" stroke-width="1.5"/>
-                      <line x1="40" y1="45" x2="60" y2="45" stroke="#6366f1" stroke-width="1" stroke-dasharray="3 2"/>
-                      <line x1="40" y1="55" x2="60" y2="55" stroke="#6366f1" stroke-width="1" stroke-dasharray="3 2"/>
-                    {% when 'left_chest' %}
-                      <rect x="30" y="35" width="16" height="14" rx="3" fill="#5eead4" fill-opacity="0.6" stroke="#14b8a6" stroke-width="1.5"/>
-                    {% when 'right_chest' %}
-                      <rect x="54" y="35" width="16" height="14" rx="3" fill="#fb923c" fill-opacity="0.5" stroke="#f97316" stroke-width="1.5"/>
-                    {% when 'left_sleeve' %}
-                      <rect x="12" y="32" width="14" height="12" rx="3" fill="#a78bfa" fill-opacity="0.5" stroke="#8b5cf6" stroke-width="1.5" transform="rotate(-15 19 38)"/>
-                    {% when 'right_sleeve' %}
-                      <rect x="74" y="32" width="14" height="12" rx="3" fill="#f472b6" fill-opacity="0.5" stroke="#ec4899" stroke-width="1.5" transform="rotate(15 81 38)"/>
-                    {% else %}
-                      <rect x="35" y="40" width="30" height="30" rx="4" fill="#94a3b8" fill-opacity="0.3" stroke="#94a3b8" stroke-width="1.5"/>
-                  {% endcase %}
-                </svg>
-              </div>
-              <p class="ss-upload-loc-name">{{ location.label }}</p>
-            </div>
+  <div class="ss-section">
+    <div class="ss-label">Select Color <span id="ss-selected-color-name"></span></div>
+    <div class="ss-color-list">
+      {% for color_name in unique_colors %}
+        <!-- Find the first variant with this color to get the image -->
+        {% assign variant_image = "" %}
+        {% for v in product.variants %}
+          {% if v.option1 == color_name %}
+            {% if v.image %}
+              {% assign variant_image = v.image %}
+            {% endif %}
+            {% break %}
+          {% endif %}
+        {% endfor %}
 
-            <div class="ss-upload-preview ss-hidden" id="preview-{{ location.name }}-{{ block.id }}">
-              <img src="" alt="Preview">
-              <div class="ss-upload-info">
-                <span id="filename-{{ location.name }}-{{ block.id }}"></span>
-                <button type="button" class="ss-remove-design" onclick="event.stopPropagation(); window.removeUpload('{{ location.name }}', '{{ block.id }}')">Remove</button>
-              </div>
-            </div>
+        <div class="ss-color-item"
+             data-color="{{ color_name | escape }}"
+             onclick="window.selectMatrixColor('{{ color_name | escape }}', '{{ block.id }}')">
 
-            <input type="file"
-                   id="file-input-{{ location.name }}-{{ block.id }}"
-                   class="ss-hidden"
-                   accept="image/*,.svg,.pdf,.psd,.ai,.eps,.tiff,.tif,.cdr,.indd"
-                   style="display: none;"
-                   onchange="window.handleFileUpload(this, '{{ location.name }}', '{{ block.id }}')">
+          <div class="ss-color-circle">
+            {% if variant_image %}
+              <img src="{{ variant_image | img_url: '100x100', crop: 'center' }}" alt="{{ color_name }}">
+            {% else %}
+              <span class="ss-no-img"></span>
+            {% endif %}
           </div>
+          <span class="ss-tooltip">{{ color_name }}</span>
         </div>
       {% endfor %}
     </div>
   </div>
+
+  <!-- 3. SIZE & QUANTITY MATRIX (Static Render) -->
+  <div class="ss-section ss-matrix-container">
+    <div class="ss-label" style="font-size:14px; font-weight:700; margin-bottom:15px; color:#111;">SELECT QUANTITIES</div>
+
+    {% for color_name in unique_colors %}
+      <!-- Create a container for EACH color -->
+      <div class="ss-size-group"
+           data-color-group="{{ color_name | escape }}"
+           style="{% unless forloop.first %}display:none;{% endunless %}">
+
+        <div class="ss-grid-layout">
+          {% for v in product.variants %}
+            {% if v.option1 == color_name %}
+              <div class="ss-size-item">
+                <div class="ss-size-label-row">
+                  <span class="ss-size-name">{{ v.option2 | default: 'One Size' }}</span>
+                  <span class="ss-stock-badge {% if v.inventory_quantity <= 0 %}out{% elsif v.inventory_quantity < 50 %}low{% endif %}" title="{{ v.inventory_quantity }} available"></span>
+                </div>
+                <input type="number"
+                       class="ss-input-field"
+                       min="0"
+                       max="{{ v.inventory_quantity }}"
+                       placeholder="0"
+                       {% if v.inventory_quantity <= 0 %}disabled{% endif %}
+                       data-variant-id="{{ v.id }}"
+                       data-price="{{ v.price | money_without_currency }}"
+                       oninput="window.updateMatrixTotal('{{ block.id }}')">
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <!-- 4. UPLOAD: Modern Dropzone (Always Visible if Configured) -->
+  {%- assign upload_locations = shop.metafields.ss_custom.upload_locations.value -%}
+  {%- if upload_locations != blank -%}
+    <div class="ss-section ss-upload-wrapper" id="ss-upload-{{ block.id }}">
+      <div class="ss-label">Upload Artwork</div>
+      <div class="ss-upload-row">
+        {% for location in upload_locations %}
+          <div class="ss-upload-card" onclick="document.getElementById('file-input-{{ location.name }}-{{ block.id }}').click()">
+            <div class="ss-upload-content" id="placeholder-{{ location.name }}-{{ block.id }}">
+               <span class="ss-upload-icon">+</span>
+               <span class="ss-upload-text">{{ location.label }}</span>
+            </div>
+
+            <div class="ss-upload-preview" id="preview-{{ location.name }}-{{ block.id }}" style="display:none;">
+              <div class="ss-preview-image"></div>
+              <button class="ss-remove-btn" onclick="event.stopPropagation(); window.removeUpload('{{ location.name }}', '{{ block.id }}')">×</button>
+            </div>
+
+            <input type="file" id="file-input-{{ location.name }}-{{ block.id }}" hidden
+                   onchange="window.handleFileUpload(this, '{{ location.name }}', '{{ block.id }}')">
+          </div>
+        {% endfor %}
+      </div>
+    </div>
   {%- endif -%}
 
-
-  <div class="ss-footer" id="ss-footer-{{ block.id }}" style="display: none;">
-    <!-- Summary and Footer rendered by JS -->
+  <!-- 5. FOOTER: Sticky-like Action Bar -->
+  <div class="ss-footer">
+    <div class="ss-total-wrapper">
+      <span class="ss-total-label">Total</span>
+      <span class="ss-total-price" id="ss-total-price-{{ block.id }}">$0.00</span>
+    </div>
+    <button id="ss-add-to-cart-{{ block.id }}" class="ss-action-btn" disabled onclick="window.addToCart('{{ block.id }}')">
+      Add to Cart
+    </button>
   </div>
 
-  <div class="ss-error" id="ss-error-{{ block.id }}" style="display: none;">
-    <!-- Error rendered by JS -->
-  </div>
 </div>
 
-{{ 'matrix.js' | asset_url | script_tag }}
+<style>
+/* ─── 2026 MODERN RESET ─── */
+.ss-clean-widget {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #111;
+  max-width: 100%;
+  margin: 40px 0;
+}
+
+.ss-clean-widget * {
+  box-sizing: border-box;
+}
+
+/* HEADER */
+.ss-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+}
+.ss-title {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  margin: 0;
+}
+
+/* LABELS */
+.ss-label {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #666;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#ss-selected-color-name {
+  color: #111;
+  font-weight: 700;
+}
+
+/* COLORS: Horizontal Scroll or Wrap, Cleaning Floating Look */
+.ss-color-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 40px;
+}
+.ss-color-item {
+  position: relative;
+  cursor: pointer;
+  group: hover;
+}
+.ss-color-circle {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  overflow: hidden;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s;
+  border: 2px solid transparent;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  background: #f1f5f9;
+}
+.ss-color-circle img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.ss-no-img {
+  display: block; width: 100%; height: 100%; background: #eee;
+}
+
+/* Selected State */
+.ss-color-selected .ss-color-circle {
+  transform: scale(1.1);
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #111;
+}
+.ss-tooltip {
+  position: absolute;
+  bottom: -30px;
+  left: 50%;
+  transform: translateX(-50%) translateY(5px);
+  background: #111;
+  color: #fff;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.2s;
+  white-space: nowrap;
+  z-index: 10;
+}
+.ss-color-item:hover .ss-tooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* GRID LAYOUT (Replacing old cards) */
+.ss-grid-layout {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 16px;
+  margin-bottom: 40px;
+}
+
+/* SIZE INPUT ITEM (The New "Card") */
+.ss-size-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ss-size-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0 4px;
+}
+.ss-size-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111;
+}
+.ss-stock-badge {
+  width: 6px;
+  height: 6px;
+  background: #22c55e;
+  border-radius: 50%;
+}
+.ss-stock-badge.low { background: #eab308; }
+.ss-stock-badge.out { background: #ef4444; }
+
+/* 2026 Input Style: Soft Filled, No heavy border */
+.ss-input-field {
+  width: 100%;
+  height: 50px;
+  background: #f3f4f6; /* Soft gray fill */
+  border: 2px solid transparent;
+  border-radius: 12px;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111;
+  transition: all 0.2s;
+  outline: none;
+}
+.ss-input-field:focus {
+  background: #fff;
+  border-color: #111;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+.ss-input-field:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f9fafb;
+}
+
+/* UPLOAD: Minimalist Tiles */
+.ss-upload-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 40px;
+}
+.ss-upload-card {
+  aspect-ratio: 4/3;
+  background: #f9fafb;
+  border: 1px dashed #d1d5db;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+.ss-upload-card:hover {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  border-style: solid;
+}
+.ss-upload-content {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.ss-upload-icon {
+  font-size: 24px;
+  color: #9ca3af;
+}
+.ss-upload-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: #4b5563;
+}
+.ss-preview-image {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background-size: cover;
+  background-position: center;
+}
+.ss-remove-btn {
+  position: absolute;
+  top: 6px; right: 6px;
+  width: 24px; height: 24px;
+  background: #fff;
+  border-radius: 50%;
+  border: 1px solid #e5e7eb;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  color: #ef4444;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* FOOTER BAR */
+.ss-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #f3f4f6;
+}
+.ss-total-wrapper {
+  display: flex;
+  flex-direction: column;
+}
+.ss-total-label {
+  font-size: 12px;
+  color: #666;
+  text-transform: uppercase;
+}
+.ss-total-price {
+  font-size: 24px;
+  font-weight: 800;
+  color: #111;
+}
+
+.ss-action-btn {
+  flex: 1;
+  max-width: 400px;
+  height: 56px;
+  background: #111;
+  color: #fff;
+  border: none;
+  border-radius: 28px; /* Pill shape */
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.1s, opacity 0.2s;
+}
+.ss-action-btn:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+.ss-action-btn:disabled {
+  background: #e5e7eb;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+/* Spinner Animation */
+.ss-spinner {
+  display: inline-block;
+  width: 16px; height: 16px;
+  border: 2px solid #ddd;
+  border-top-color: #333;
+  border-radius: 50%;
+  animation: sspin 0.6s linear infinite;
+}
+@keyframes sspin { to { transform: rotate(360deg); } }
+
+/* Mobile Optimizations */
+@media (max-width: 600px) {
+  .ss-grid-layout {
+    grid-template-columns: repeat(3, 1fr); /* 3 cols on mobile */
+    gap: 12px;
+  }
+  .ss-input-field {
+    height: 44px;
+    font-size: 16px;
+  }
+  .ss-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .ss-footer { flex-direction: column; align-items: title; gap: 16px; }
+  .ss-action-btn { width: 100%; max-width: none; }
+}
+</style>
+
+<script src="{{ 'matrix.js' | asset_url }}" defer></script>
+
+{% schema %}
+{
+  "name": "SS Matrix Order V4",
+  "target": "section",
+  "stylesheet": "matrix.css",
+  "javascript": "matrix.js",
+  "settings": [
+    { "type": "text", "id": "widget_title", "label": "Widget Title", "default": "Quick Order" },
+    { "type": "text", "id": "button_text", "label": "Button Text", "default": "Add to Cart" },
+    { "type": "checkbox", "id": "show_warehouse", "label": "Show Warehouse Stock", "default": false },
+    { "type": "header", "content": "Colors & Styles" },
+    { "type": "color", "id": "primary_color", "label": "Accent Color", "default": "#111111" }
+  ]
+}
+{% endschema %}

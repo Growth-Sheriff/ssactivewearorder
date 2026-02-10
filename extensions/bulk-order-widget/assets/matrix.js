@@ -1,10 +1,10 @@
-// SSActiveWear Variant Selection Widget v2.1
-// Features: Multiple Upload Locations, Dynamic Icons, Matrix Qty, Cart Properties
+// SSActiveWear Variant Selection Widget v4.1 (Static Liquid + JS Toggle + Upload Fix)
+// Features: Clean UI, Static Rendering for Speed, Visibility Toggling, Reliable Uploads
+
 (function() {
   document.addEventListener("DOMContentLoaded", initVariantWidgets);
 
   // State for multiple designs
-  // Format: { 'front': { url: '...', thumb: '...', name: '...' }, 'back': ... }
   window.uploadedDesigns = {};
 
   function initVariantWidgets() {
@@ -14,188 +14,140 @@
 
   async function initWidget(container) {
     const blockId = container.id.replace('ss-matrix-widget-', '');
-    const loadingEl = document.getElementById(`ss-loading-${blockId}`);
-    const contentEl = document.getElementById(`ss-content-${blockId}`);
-    const uploadEl = document.getElementById(`ss-upload-${blockId}`);
-    const footerEl = document.getElementById(`ss-footer-${blockId}`);
-    const errorEl = document.getElementById(`ss-error-${blockId}`);
+    const loadingEl = container.querySelector('.ss-loading');
+
+    if (loadingEl) loadingEl.style.display = 'none';
 
     const variants = JSON.parse(container.dataset.variants || '[]');
-    const showWarehouse = container.dataset.showWarehouse === 'true';
-    const buttonText = container.dataset.buttonText || 'Add Selected to Cart';
-    const productId = container.dataset.productId || '';
 
-    const skus = variants.map(v => v.sku).filter(s => s && s.trim());
-
-    if (skus.length === 0) {
-      container.style.display = 'none';
-      return;
+    // Initial State: Select first color
+    const firstColor = variants[0]?.option1;
+    if (firstColor) {
+      selectMatrixColor(firstColor, blockId);
     }
 
-    hideThemeFormElements();
+    // Show sections that might be hidden by default css if any
+    const uploadEl = document.getElementById(`ss-upload-${blockId}`);
+    if (uploadEl) uploadEl.style.display = 'block';
+
+    const footerEl = document.querySelector(`#ss-matrix-widget-${blockId} .ss-footer`);
+    if (footerEl) footerEl.style.display = 'flex';
+
+    // Volume Pricing (if present)
+    const volumeEl = document.getElementById(`ss-volume-${blockId}`);
+    if (volumeEl) {
+       volumeEl.style.display = 'block';
+    }
+  }
+
+  // ─── VISIBILITY TOGGLE (Core Logic) ───
+  window.selectMatrixColor = function(colorName, blockId) {
+    const container = document.getElementById(`ss-matrix-widget-${blockId}`);
+    if (!container) return;
+
+    // 1. Highlight Color Circle
+    const allColors = container.querySelectorAll('.ss-color-item');
+    allColors.forEach(el => {
+      if (el.dataset.color === colorName) el.classList.add('ss-color-selected');
+      else el.classList.remove('ss-color-selected');
+    });
+
+    // Update Label
+    const label = container.querySelector('#ss-selected-color-name');
+    if (label) label.textContent = `: ${colorName}`;
+
+    // 2. Toggle Size Groups Visibility
+    const groups = container.querySelectorAll('.ss-size-group');
+    groups.forEach(group => {
+      if (group.dataset.colorGroup === colorName) {
+        group.style.display = 'block';
+      } else {
+        group.style.display = 'none';
+      }
+    });
+
+    const mContainer = container.querySelector('.ss-matrix-container');
+    if (mContainer) mContainer.style.display = 'block';
+  };
+
+  // ─── TOTAL CALCULATION ───
+  window.updateMatrixTotal = function(blockId) {
+    const container = document.getElementById(`ss-matrix-widget-${blockId}`);
+    const inputs = container.querySelectorAll('.ss-input-field');
+    const priceEl = document.getElementById(`ss-total-price-${blockId}`);
+    const btn = document.getElementById(`ss-add-to-cart-${blockId}`);
+
+    let count = 0;
+    let total = 0;
+
+    inputs.forEach(inp => {
+      const val = parseInt(inp.value) || 0;
+      if (val > 0) {
+        count += val;
+        // Price might be in dataset
+        const price = parseFloat(inp.dataset.price) || 0;
+        total += val * price;
+      }
+    });
+
+    if (priceEl) priceEl.textContent = `$${total.toFixed(2)}`;
+    if (btn) btn.disabled = count === 0;
+  };
+
+  // ─── ADD TO CART ───
+  window.addToCart = async function(blockId) {
+    const btn = document.getElementById(`ss-add-to-cart-${blockId}`);
+    const container = document.getElementById(`ss-matrix-widget-${blockId}`);
+    const inputs = container.querySelectorAll('.ss-input-field');
+
+    const items = [];
+    inputs.forEach(inp => {
+      const qty = parseInt(inp.value) || 0;
+      if (qty > 0) {
+        const item = { id: inp.dataset.variantId, quantity: qty, properties: {} };
+
+        // Attach Uploads if any
+        if (window.uploadedDesigns) {
+           Object.keys(window.uploadedDesigns).forEach(loc => {
+              const d = window.uploadedDesigns[loc];
+              const label = loc.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+              item.properties[`${label} Design`] = d.url;
+           });
+        }
+        items.push(item);
+      }
+    });
+
+    if (items.length === 0) return;
+
+    btn.textContent = 'Adding...';
+    btn.disabled = true;
 
     try {
-      const inventoryData = await fetchInventory(skus);
-      loadingEl.style.display = 'none';
-      renderVariantSelector(variants, inventoryData, contentEl, footerEl, { showWarehouse, buttonText });
-      contentEl.style.display = 'block';
-      if (uploadEl) uploadEl.style.display = 'block';
-      if (footerEl) footerEl.style.display = 'block';
-
-      // Volume Pricing
-      const volumeEl = document.getElementById(`ss-volume-${blockId}`);
-      if (volumeEl) {
-        renderVolumePricing(volumeEl, blockId, variants);
-        volumeEl.style.display = 'block';
-      }
-    } catch (error) {
-      console.error("Widget Error:", error);
-      loadingEl.style.display = 'none';
-      errorEl.innerHTML = `<p>Unable to load inventory data.</p>`;
-      errorEl.style.display = 'block';
-    }
-  }
-
-  function hideThemeFormElements() {
-    const selectorsToHide = [
-      '.product-form__input', '.product-form__variant-selector', '.variant-selector',
-      '[class*="variant-picker"]', '[class*="variant-select"]', '[data-variant-picker]',
-      '.product-form__quantity', '.quantity-selector', '.quantity-wrapper',
-      '[class*="quantity-input"]', '[data-quantity-input]',
-      'product-form .shopify-payment-button', '.product-form__submit', '.product-form__buttons',
-      '.product-form .btn--add-to-cart', 'form[action*="/cart/add"] button[type="submit"]',
-      '.size-selector', '.color-selector', '[class*="option-selector"]', '[class*="swatch"]'
-    ];
-
-    selectorsToHide.forEach(selector => {
-      try {
-        const elements = document.querySelectorAll(selector);
-        elements.forEach(el => {
-          if (!el.closest('.ss-bulk-order-widget')) { el.style.display = 'none'; }
+      // Chunking for safety
+      const CHUNK_SIZE = 10;
+      for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+        const chunk = items.slice(i, i + CHUNK_SIZE);
+        await fetch('/cart/add.js', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: chunk })
         });
-      } catch (e) {}
-    });
-  }
-
-  async function fetchInventory(skus) {
-    const response = await fetch("/apps/ssactiveorder", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query: `query GetInventory($skus: [String]!) { getInventory(skus: $skus) { sku warehouses { warehouseAbbr qty } } }`,
-        variables: { skus }
-      })
-    });
-
-    const json = await response.json();
-    if (json.data && json.data.getInventory) {
-      const inventoryMap = new Map();
-      json.data.getInventory.forEach(item => {
-        const warehouseData = {};
-        let total = 0;
-        item.warehouses.forEach(w => {
-          warehouseData[w.warehouseAbbr] = w.qty;
-          total += w.qty;
-        });
-        inventoryMap.set(item.sku, { total, warehouses: warehouseData });
-      });
-      return inventoryMap;
-    }
-    return new Map();
-  }
-
-  function renderVariantSelector(variants, inventoryMap, container, footerContainer, options) {
-    const { buttonText } = options;
-    const colorMap = new Map();
-    const allSizes = new Set();
-
-    variants.forEach(variant => {
-      const color = variant.option1 || 'Default';
-      const size = variant.option2 || 'One Size';
-      const image = variant.featured_image?.src || variant.image || '';
-      allSizes.add(size);
-
-      if (!colorMap.has(color)) {
-        colorMap.set(color, { name: color, image: image, sizes: new Map() });
       }
 
-      const stockInfo = inventoryMap.get(variant.sku) || { total: 0, warehouses: {} };
-      colorMap.get(color).sizes.set(size, {
-        variant, stock: stockInfo.total,
-        warehouses: stockInfo.warehouses,
-        price: parseFloat(variant.price) / 100
-      });
-    });
-
-    const colors = Array.from(colorMap.values());
-    const sizes = Array.from(allSizes);
-    const sizeOrder = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', 'XXS', 'XSM', 'SML', 'MED', 'LRG', 'XLG', '2X', '3X', '4X', '5X'];
-    sizes.sort((a, b) => {
-      const aIdx = sizeOrder.findIndex(s => a.toUpperCase().includes(s));
-      const bIdx = sizeOrder.findIndex(s => b.toUpperCase().includes(s));
-      if (aIdx === -1 && bIdx === -1) return a.localeCompare(b);
-      if (aIdx === -1) return 1;
-      if (bIdx === -1) return -1;
-      return aIdx - bIdx;
-    });
-
-    let html = `
-      <div class="ss-section">
-        <div class="ss-section-title">Select Color</div>
-        <div class="ss-color-grid-wrapper">
-          <div class="ss-color-grid" id="ss-color-grid">
-            ${colors.map((color, index) => `
-              <div class="ss-color-card ${index === 0 ? 'ss-color-selected' : ''}" data-color="${escapeHtml(color.name)}" tabindex="0">
-                <div class="ss-color-image">${color.image ? `<img src="${color.image}" alt="${escapeHtml(color.name)}">` : `<div class="ss-no-image">No Image</div>`}</div>
-                <div class="ss-color-name">${escapeHtml(color.name)}</div>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      </div>
-    `;
-
-    colors.forEach((color, index) => {
-      html += `
-        <div class="ss-sizes-section ${index === 0 ? '' : 'ss-hidden'}" data-color-section="${escapeHtml(color.name)}">
-          <div class="ss-section-title">Sizes</div>
-          <div class="ss-sizes-grid">
-            ${sizes.map(sizeName => {
-              const sizeData = color.sizes.get(sizeName);
-              if (!sizeData) return `<div class="ss-size-card ss-size-unavailable"><div class="ss-size-name">${escapeHtml(sizeName)}</div><div class="ss-size-stock">N/A</div></div>`;
-              const isDisabled = sizeData.stock === 0;
-              return `
-                <div class="ss-size-card ${isDisabled ? 'ss-size-out' : ''}">
-                  <input type="number" class="ss-size-input ${isDisabled ? 'ss-disabled' : ''}" min="0" max="${sizeData.stock}" placeholder="0"
-                    data-variant-id="${sizeData.variant.id}" data-price="${sizeData.price}" ${isDisabled ? 'disabled' : ''}>
-                  <div class="ss-size-name">${escapeHtml(sizeName)}</div>
-                  <div class="ss-size-stock ${getStockClass(sizeData.stock)}">${formatStock(sizeData.stock)}</div>
-                  ${sizeData.price > 0 ? `<div class="ss-size-price">$${sizeData.price.toFixed(2)}</div>` : ''}
-                </div>
-              `;
-            }).join('')}
-          </div>
-        </div>
-      `;
-    });
-
-    container.innerHTML = html;
-
-    // Render Footer separately
-    if (footerContainer) {
-      footerContainer.innerHTML = `
-        <div class="ss-order-summary">
-          <div class="ss-summary-row"><span class="ss-summary-label">Items</span><span class="ss-summary-value" id="ss-total-items">0</span></div>
-          <div class="ss-summary-row"><span class="ss-summary-label">Total</span><span class="ss-summary-value ss-total-price" id="ss-total-price">$0.00</span></div>
-        </div>
-        <button class="ss-add-to-cart-btn" id="ss-add-to-cart-btn" disabled>${buttonText}</button>
-      `;
+      btn.textContent = 'Added!';
+      setTimeout(() => { window.location.href = '/cart'; }, 800);
+    } catch (e) {
+      console.error(e);
+      btn.textContent = 'Error';
+      setTimeout(() => {
+        btn.textContent = 'Add to Cart';
+        btn.disabled = false;
+      }, 2000);
     }
+  };
 
-    attachEventListeners(container, footerContainer);
-  }
-
-  // GLOBAL UPLOAD HANDLERS
+  // ─── UPLOAD HANDLERS ───
   window.handleFileUpload = async function(input, locationName, blockId) {
     const file = input.files[0];
     if (!file) return;
@@ -207,17 +159,36 @@
 
     const placeholder = document.getElementById(`placeholder-${locationName}-${blockId}`);
     const preview = document.getElementById(`preview-${locationName}-${blockId}`);
-    const thumbImg = preview.querySelector('img');
-    const filenameEl = document.getElementById(`filename-${locationName}-${blockId}`);
+    const previewImg = preview.querySelector('.ss-preview-image');
 
-    placeholder.innerHTML = '<div class="ss-btn-spinner"></div><p>Uploading...</p>';
+    const originalContent = placeholder.innerHTML;
+    placeholder.innerHTML = '<span class="ss-upload-text">Uploading...</span>';
 
     try {
       const formData = new FormData();
       formData.append('file', file);
 
-      // Use the same app proxy endpoint — server detects multipart vs JSON
-      const response = await fetch('/apps/ssactiveorder', { method: 'POST', body: formData });
+      // Use /api/upload endpoint via App Proxy
+      // If 500 persists, user should check proxy settings or server logs.
+      // Trying '/apps/ssactiveorder/api/upload' assuming simple proxy forwarding.
+      const response = await fetch('/apps/ssactiveorder/api/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      // Check if response is okay
+      if (!response.ok) {
+        let errorText = await response.text();
+        try {
+          // try to parse json error if available
+          const errorJson = JSON.parse(errorText);
+          if (errorJson.error) errorText = errorJson.error;
+        } catch (e) {
+          // ignore parsing error
+        }
+        throw new Error(`Server Error (${response.status}): ${errorText.substring(0, 100)}`);
+      }
+
       const result = await response.json();
 
       if (result.success && result.url) {
@@ -227,28 +198,25 @@
           name: file.name
         };
 
-        filenameEl.textContent = file.name;
-        // Show thumbnail for image files
-        if (file.type.startsWith('image/') && !file.name.match(/\.(psd|ai|eps|tiff?)$/i)) {
-          thumbImg.src = result.url;
+        // Show Preview with IMG tag
+        if (file.type.startsWith('image/')) {
+           previewImg.innerHTML = `<img src="${result.url}" style="width:100%; height:100%; object-fit:cover; border-radius:12px;">`;
+           previewImg.style.backgroundImage = 'none';
         } else {
-          // Non-previewable: show file icon
-          thumbImg.src = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="%236b7280" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>');
+           previewImg.innerHTML = `<span style="font-size:30px; display:flex; align-items:center; justify-content:center; width:100%; height:100%;">📄</span>`;
         }
-        placeholder.classList.add('ss-hidden');
+
         placeholder.style.display = 'none';
-        preview.classList.remove('ss-hidden');
         preview.style.display = 'flex';
 
-        const readableLabel = locationName.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-        showToast(`${readableLabel} design uploaded!`, 'success');
+        showToast(`${locationName} uploaded!`, 'success');
       } else {
         throw new Error(result.error || 'Upload failed');
       }
     } catch (error) {
       console.error('Upload error:', error);
-      showToast(error.message || 'Upload failed – please try again', 'error');
-      placeholder.innerHTML = `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v4m4-10l4-4 4 4m-4-4v12"></path></svg><p>Retry upload</p>`;
+      showToast(error.message, 'error');
+      placeholder.innerHTML = originalContent;
     }
   };
 
@@ -257,195 +225,23 @@
     const placeholder = document.getElementById(`placeholder-${locationName}-${blockId}`);
     const preview = document.getElementById(`preview-${locationName}-${blockId}`);
     const fileInput = document.getElementById(`file-input-${locationName}-${blockId}`);
+    const previewImg = preview.querySelector('.ss-preview-image');
 
-    placeholder.innerHTML = `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v4m4-10l4-4 4 4m-4-4v12"></path></svg><p>Click to upload</p><span>SVG, PNG, JPG</span>`;
-    placeholder.classList.remove('ss-hidden');
     placeholder.style.display = 'flex';
-    preview.classList.add('ss-hidden');
+    placeholder.innerHTML = `<span class="ss-upload-icon">+</span><span class="ss-upload-text">${locationName}</span>`;
+
     preview.style.display = 'none';
+    previewImg.innerHTML = ''; // Clear img tag
     fileInput.value = '';
   };
 
-  function attachEventListeners(container, footerContainer) {
-    const root = container.parentElement;
-    const colorCards = container.querySelectorAll('.ss-color-card');
-    const inputs = container.querySelectorAll('.ss-size-input');
-    const addToCartBtn = root.querySelector('#ss-add-to-cart-btn');
-    const totalItemsEl = root.querySelector('#ss-total-items');
-    const totalPriceEl = root.querySelector('#ss-total-price');
-
-    colorCards.forEach(card => {
-      card.addEventListener('click', function() {
-        const selectedColor = this.dataset.color;
-        colorCards.forEach(c => c.classList.remove('ss-color-selected'));
-        this.classList.add('ss-color-selected');
-        container.querySelectorAll('.ss-sizes-section').forEach(s => s.classList.add('ss-hidden'));
-        container.querySelector(`[data-color-section="${selectedColor}"]`)?.classList.remove('ss-hidden');
-      });
-    });
-
-    function updateSummary() {
-      let totalItems = 0, totalPrice = 0;
-      inputs.forEach(input => {
-        const qty = parseInt(input.value) || 0;
-        if (qty > 0) {
-          totalItems += qty;
-          totalPrice += qty * (parseFloat(input.dataset.price) || 0);
-        }
-      });
-      totalItemsEl.textContent = totalItems;
-      totalPriceEl.textContent = `$${totalPrice.toFixed(2)}`;
-      addToCartBtn.disabled = totalItems === 0;
-    }
-
-    inputs.forEach(input => {
-      input.addEventListener('input', updateSummary);
-    });
-
-    addToCartBtn.addEventListener('click', async function() {
-      const items = [];
-      inputs.forEach(input => {
-        const qty = parseInt(input.value) || 0;
-        if (qty > 0) {
-          const item = { id: input.dataset.variantId, quantity: qty, properties: {} };
-
-          // ADD ALL DESIGNS AS PROPERTIES
-          // Fix: properly capitalize location names (full_front → Full Front)
-          Object.keys(window.uploadedDesigns).forEach(loc => {
-            const d = window.uploadedDesigns[loc];
-            const label = loc.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-            item.properties[`${label} Design`] = d.url;
-            item.properties[`_${loc}_preview`] = d.thumb;
-            item.properties[`_${loc}_filename`] = d.name;
-          });
-
-          items.push(item);
-        }
-      });
-
-      addToCartBtn.disabled = true;
-      addToCartBtn.textContent = 'Adding...';
-
-      try {
-        // Batch add in chunks of 10 to avoid Shopify timeout
-        const CHUNK_SIZE = 10;
-        for (let i = 0; i < items.length; i += CHUNK_SIZE) {
-          const chunk = items.slice(i, i + CHUNK_SIZE);
-          const res = await fetch('/cart/add.js', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ items: chunk })
-          });
-
-          if (!res.ok) {
-            const errorData = await res.json().catch(() => ({}));
-            const msg = errorData.description || errorData.message || 'Failed to add items';
-            throw new Error(msg);
-          }
-        }
-
-        showToast(`Added ${items.length} item${items.length > 1 ? 's' : ''} to cart!`, 'success');
-        setTimeout(() => window.location.href = '/cart', 1000);
-      } catch (e) {
-        showToast(e.message || 'Error adding to cart', 'error');
-        addToCartBtn.disabled = false;
-        addToCartBtn.textContent = 'Add Selected to Cart';
-      }
-    });
-  }
-
-  function escapeHtml(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
-  function getStockClass(s) { return s === 0 ? 'ss-stock-out' : (s < 50 ? 'ss-stock-low' : (s < 500 ? 'ss-stock-medium' : 'ss-stock-high')); }
-  function formatStock(q) { return q === 0 ? 'Out' : (q >= 1000 ? `${(q / 1000).toFixed(1)}K` : q.toString()); }
   function showToast(m, t) {
     const el = document.createElement('div');
-    el.className = `ss-toast ss-toast-${t}`;
+    el.style.cssText = `position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:12px 24px;border-radius:30px;font-size:14px;z-index:9999;box-shadow:0 5px 20px rgba(0,0,0,0.2);`;
+    if (t === 'error') el.style.background = '#ef4444';
     el.textContent = m;
     document.body.appendChild(el);
     setTimeout(() => el.remove(), 3000);
   }
 
-  // ═══ Volume Pricing Table ═══
-  function renderVolumePricing(container, blockId, variants) {
-    const raw = container.dataset.volumeTiers;
-    if (!raw) return;
-
-    let data;
-    try {
-      // Handle double-encoded JSON from Liquid
-      let cleaned = raw;
-      if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
-        cleaned = JSON.parse(cleaned);
-      }
-      data = typeof cleaned === 'string' ? JSON.parse(cleaned) : cleaned;
-    } catch (e) {
-      console.error('[VolumePricing] Parse error:', e);
-      return;
-    }
-
-    const tiers = data.tiers || [];
-    const sizePremiums = data.sizePremiums || [];
-    const basePrice = data.basePrice || 0;
-
-    if (tiers.length === 0 || basePrice === 0) return;
-
-    const tableEl = document.getElementById(`ss-volume-table-${blockId}`);
-    if (!tableEl) return;
-
-    // Build header
-    let html = '<table class="ss-volume-table"><thead><tr><th>Quantity</th>';
-    tiers.forEach(tier => {
-      const label = tier.maxQty ? `${tier.minQty}-${tier.maxQty}` : `${tier.minQty}+`;
-      html += `<th>${label}</th>`;
-    });
-    html += '</tr></thead><tbody>';
-
-    // XS-XL row (base sizes)
-    html += '<tr><td>Price (XS-XL)</td>';
-    tiers.forEach((tier, i) => {
-      const price = calcTierPrice(basePrice, tier);
-      const cls = i === 0 ? 'ss-price-cell ss-base' : 'ss-price-cell';
-      html += `<td class="${cls}">$${price.toFixed(2)}</td>`;
-    });
-    html += '</tr>';
-
-    // Size premium rows
-    sizePremiums.forEach(sp => {
-      const adjustedBase = sp.premiumType === 'fixed'
-        ? basePrice + sp.premiumValue
-        : basePrice * (1 + sp.premiumValue / 100);
-
-      html += `<tr><td>Price (${escapeHtml(sp.sizePattern)})</td>`;
-      tiers.forEach((tier, i) => {
-        const price = calcTierPrice(adjustedBase, tier);
-        const cls = i === 0 ? 'ss-price-cell ss-base' : 'ss-price-cell';
-        html += `<td class="${cls}">$${price.toFixed(2)}</td>`;
-      });
-      html += '</tr>';
-    });
-
-    // Discount row
-    html += '<tr style="background:#f8fafc;"><td style="color:#64748b;font-weight:600;">Discount</td>';
-    tiers.forEach(tier => {
-      if (tier.discountType === 'percentage') {
-        html += `<td style="font-weight:600;color:${tier.discountValue > 0 ? '#059669' : '#64748b'};">${tier.discountValue}%</td>`;
-      } else {
-        html += `<td style="font-weight:600;color:${tier.discountValue > 0 ? '#059669' : '#64748b'};">-$${tier.discountValue.toFixed(2)}</td>`;
-      }
-    });
-    html += '</tr>';
-
-    html += '</tbody></table>';
-    tableEl.innerHTML = html;
-
-    // Store data for dynamic highlighting
-    container._volumeData = { tiers, sizePremiums, basePrice };
-  }
-
-  function calcTierPrice(base, tier) {
-    if (tier.discountType === 'percentage') {
-      return Math.max(0, base * (1 - tier.discountValue / 100));
-    }
-    return Math.max(0, base - tier.discountValue);
-  }
 })();

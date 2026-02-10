@@ -34,6 +34,6 @@ redirect_urls = [
 ]
 
 [app_proxy]
-url = "https://ssaw-e.techifyboost.com/api/graphql"
+url = "https://ssaw-e.techifyboost.com/"
 subpath = "ssactiveorder"
 prefix = "apps"
