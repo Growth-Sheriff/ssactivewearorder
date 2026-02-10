@@ -49,6 +49,16 @@
     </div>
   </div>
 
+  <!-- 2b. VOLUME PRICING (Dynamic JS) -->
+  <div class="ss-section ss-volume-wrapper" id="ss-volume-{{ block.id }}" style="display:none;">
+    <div class="ss-label">Quantity Discounts</div>
+    <div class="ss-volume-scroll">
+      <div class="ss-volume-row" id="ss-volume-content-{{ block.id }}">
+         <!-- Populated by JS -->
+      </div>
+    </div>
+  </div>
+
   <!-- 3. SIZE & QUANTITY MATRIX (Static Render) -->
   <div class="ss-section ss-matrix-container">
     <div class="ss-label" style="font-size:14px; font-weight:700; margin-bottom:15px; color:#111;">SELECT QUANTITIES</div>
@@ -222,6 +232,53 @@
 .ss-color-item:hover .ss-tooltip {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+}
+
+/* VOLUME PRICING TABLE */
+.ss-volume-wrapper {
+  margin-bottom: 30px;
+}
+.ss-volume-scroll {
+  overflow-x: auto;
+  padding-bottom: 10px;
+}
+.ss-volume-row {
+  display: flex;
+  gap: 0;
+  background: #f9fafb;
+  border-radius: 12px;
+  overflow: hidden;
+  width: max-content;
+  min-width: 100%;
+}
+.ss-volume-cell {
+  flex: 1;
+  min-width: 80px;
+  padding: 12px 16px;
+  text-align: center;
+  border-right: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: background 0.2s;
+}
+.ss-volume-cell:last-child { border-right: none; }
+.ss-volume-cell.active {
+  background: #dbeafe; /* Light blue highlight */
+  border-bottom: 3px solid #3b82f6;
+}
+.ss-vol-qty {
+  font-size: 13px;
+  font-weight: 700;
+  color: #111;
+}
+.ss-vol-price {
+  font-size: 14px;
+  color: #666;
+}
+.ss-volume-cell.active .ss-vol-price {
+  color: #1d4ed8;
+  font-weight: 700;
 }
 
 /* GRID LAYOUT (Replacing old cards) */
