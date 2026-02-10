@@ -85,7 +85,9 @@
                        {% if v.inventory_quantity <= 0 %}disabled{% endif %}
                        data-variant-id="{{ v.id }}"
                        data-price="{{ v.price | money_without_currency }}"
+                       data-size-name="{{ v.option2 | escape }}"
                        oninput="window.updateMatrixTotal('{{ block.id }}')">
+                <div class="ss-price-hint" id="price-hint-{{ v.id }}">{{ v.price | money }}</div>
               </div>
             {% endif %}
           {% endfor %}
@@ -339,6 +341,13 @@
   opacity: 0.5;
   cursor: not-allowed;
   background: #f9fafb;
+}
+.ss-price-hint {
+  font-size: 11px;
+  color: #666;
+  text-align: center;
+  margin-top: 4px;
+  font-weight: 500;
 }
 
 /* UPLOAD: Minimalist Tiles */

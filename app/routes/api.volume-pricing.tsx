@@ -3,22 +3,19 @@ import prisma from "../db.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
-  let productId = url.searchParams.get("product_id");
+  const productId = url.searchParams.get("product_id");
 
   if (!productId) {
     return json({ tiers: [] }, { status: 400, headers: { "Access-Control-Allow-Origin": "*" } });
   }
 
-  // Ensure GID format if needed, OR try both formats
-  // Usually stored as gid://shopify/Product/12345 or just 12345
-  // We'll try to find a rule that contains this product.
-
   try {
-    // Attempt 1: Search by partial ID or Exact ID
-    // Since we don't know the exact schema of relation (is it ManyToMany with ProductMap or embedded?),
-    // we use the relation defined in Rule -> products
+    // Attempt to find a rule where 'products' list (Relationship) contains our productId
+    // Or GID format
 
-    // We try to find a rule where 'products' list contains our productId
+    // We assume Model VolumePriceRule -> products: VolumePriceProduct[]
+    // VolumePriceProduct has field `shopifyProductId`.
+
     const rules = await prisma.volumePriceRule.findMany({
       where: {
         isActive: true,
@@ -33,6 +30,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       },
       include: {
         tiers: { orderBy: { sortOrder: "asc" } },
+        sizePremiums: { orderBy: { sortOrder: "asc" } },
         products: {
           where: {
              OR: [
@@ -40,7 +38,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
               { shopifyProductId: `gid://shopify/Product/${productId}` }
             ]
           },
-          select: { basePrice: true }
+          select: { basePrice: true } // We need base price to calculate final tiered pricing accurately
         }
       },
       take: 1
@@ -49,10 +47,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const rule = rules[0];
 
     if (!rule) {
-      return json({ tiers: [] }, { headers: { "Access-Control-Allow-Origin": "*" } });
+      return json({ tiers: [], sizePremiums: [] }, { headers: { "Access-Control-Allow-Origin": "*" } });
     }
 
-    // Get Base Price if available (to calculate exact prices)
+    // Get Base Price usually from VolumePriceProduct
+    // If not set perfectly, fallback to 0 (frontend will use variant price)
     const basePrice = rule.products[0]?.basePrice || 0;
 
     const tiers = rule.tiers.map(t => ({
@@ -62,16 +61,25 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       value: t.discountValue
     }));
 
+    // Process size premiums (e.g. 2XL -> +$2.00)
+    const sizePremiums = rule.sizePremiums.map(p => ({
+        pattern: p.sizePattern, // e.g. "2XL", "3XL" or Regex
+        value: p.premiumValue,
+        type: p.premiumType // 'fixed' or 'percentage'
+    }));
+
     return json({
       tiers,
-      basePrice,
+      sizePremiums,
+      basePrice, // This is the COST price usually, but maybe used for tiered calc
       ruleId: rule.id
     }, {
       headers: { "Access-Control-Allow-Origin": "*" }
     });
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Volume Pricing API Error:", error);
-    return json({ tiers: [], error: error.message }, { status: 500, headers: { "Access-Control-Allow-Origin": "*" } });
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return json({ tiers: [], error: errorMessage }, { status: 500, headers: { "Access-Control-Allow-Origin": "*" } });
   }
 };
