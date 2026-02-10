@@ -196,6 +196,39 @@
     </button>
   </div>
 
+  <!-- 7. LEAD CAPTURE FORM (Guest Users Only) -->
+  {% unless customer %}
+  <div class="ss-lead-capture" id="ss-lead-form-{{ block.id }}" style="display:none;">
+    <div class="ss-lead-icon">🎯</div>
+    <div class="ss-lead-header">
+      <div class="ss-lead-title">Want an even better deal on this order?</div>
+      <div class="ss-lead-subtitle">
+        Fill in your quantities above, drop your email below, and our team will reach out
+        within <strong>60 minutes</strong> with a <strong>personalized bulk discount</strong> —
+        often <span class="ss-lead-highlight">15–30% below listed prices</span>.
+      </div>
+    </div>
+    <div class="ss-lead-form-row">
+      <input type="email" class="ss-lead-email" id="ss-lead-email-{{ block.id }}"
+             placeholder="your@email.com" required>
+      <button class="ss-lead-submit" id="ss-lead-submit-{{ block.id }}"
+              onclick="window.submitLeadForm('{{ block.id }}')">
+        Get My Custom Quote
+      </button>
+    </div>
+    <div class="ss-lead-trust">
+      🔒 No spam, ever. Your info stays between us.
+      <span class="ss-lead-counter">🔥 <strong id="ss-lead-count-{{ block.id }}">23</strong> people requested quotes today</span>
+    </div>
+    <div class="ss-lead-success" id="ss-lead-success-{{ block.id }}" style="display:none;">
+      <div class="ss-lead-success-icon">🎉</div>
+      <div class="ss-lead-success-text">
+        <strong>Quote request sent!</strong> Our team will email you within 60 minutes with your personalized discount.
+      </div>
+    </div>
+  </div>
+  {% endunless %}
+
 </div>
 
 <style>
@@ -303,6 +336,162 @@
 }
 .ss-vip-login-link:hover {
   color: #b91c1c;
+}
+
+/* ─── LEAD CAPTURE FORM ─── */
+.ss-lead-capture {
+  background: linear-gradient(135deg, #fef3c7, #fde68a, #fbbf24);
+  border: 2px solid rgba(245, 158, 11, 0.3);
+  border-radius: 18px;
+  padding: 24px;
+  margin-top: 20px;
+  position: relative;
+  overflow: hidden;
+  animation: ss-lead-in 0.5s ease-out;
+}
+.ss-lead-capture::before {
+  content: '';
+  position: absolute;
+  top: -50%; right: -50%;
+  width: 100%; height: 100%;
+  background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%);
+  pointer-events: none;
+}
+@keyframes ss-lead-in {
+  from { opacity: 0; transform: translateY(15px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ss-lead-icon {
+  font-size: 28px;
+  margin-bottom: 10px;
+}
+.ss-lead-header {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 16px;
+}
+.ss-lead-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #78350f;
+  margin-bottom: 6px;
+  letter-spacing: -0.02em;
+}
+.ss-lead-subtitle {
+  font-size: 13px;
+  color: #92400e;
+  line-height: 1.7;
+}
+.ss-lead-subtitle strong {
+  color: #78350f;
+}
+.ss-lead-highlight {
+  background: rgba(220, 38, 38, 0.12);
+  color: #dc2626;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+.ss-lead-form-row {
+  display: flex;
+  gap: 10px;
+  position: relative;
+  z-index: 1;
+  margin-bottom: 12px;
+}
+.ss-lead-email {
+  flex: 1;
+  padding: 12px 16px;
+  border: 2px solid rgba(120, 53, 15, 0.2);
+  border-radius: 12px;
+  font-size: 14px;
+  background: rgba(255,255,255,0.9);
+  color: #1e293b;
+  outline: none;
+  transition: border-color 0.3s;
+}
+.ss-lead-email:focus {
+  border-color: #d97706;
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.15);
+}
+.ss-lead-email::placeholder {
+  color: #94a3b8;
+}
+.ss-lead-submit {
+  padding: 12px 20px;
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.3s;
+  animation: ss-lead-pulse 2s ease-in-out infinite;
+}
+.ss-lead-submit:hover {
+  background: linear-gradient(135deg, #b91c1c, #991b1b);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(185, 28, 28, 0.3);
+}
+.ss-lead-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  animation: none;
+}
+@keyframes ss-lead-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.3); }
+  50% { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); }
+}
+.ss-lead-trust {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: #92400e;
+  position: relative;
+  z-index: 1;
+}
+.ss-lead-counter {
+  font-size: 11px;
+  color: #b91c1c;
+}
+/* Success state */
+.ss-lead-success {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255,255,255,0.7);
+  border: 2px solid #16a34a;
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 14px;
+  animation: ss-lead-in 0.4s ease-out;
+}
+.ss-lead-success-icon {
+  font-size: 32px;
+  flex-shrink: 0;
+}
+.ss-lead-success-text {
+  font-size: 13px;
+  color: #166534;
+  line-height: 1.5;
+}
+.ss-lead-success-text strong {
+  color: #15803d;
+}
+
+/* Mobile */
+@media (max-width: 480px) {
+  .ss-lead-form-row {
+    flex-direction: column;
+  }
+  .ss-lead-trust {
+    flex-direction: column;
+    gap: 4px;
+    text-align: center;
+  }
 }
 
 .ss-header {

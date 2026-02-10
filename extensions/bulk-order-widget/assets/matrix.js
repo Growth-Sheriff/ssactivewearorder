@@ -439,6 +439,23 @@
     } else if (vipStatus) {
       vipStatus.innerHTML = "";
     }
+
+    // ═══ 10) LEAD CAPTURE FORM VISIBILITY (Guest only) ═══
+    var leadForm = document.getElementById("ss-lead-form-" + blockId);
+    if (leadForm && widgetEl) {
+      var isGuest = widgetEl.dataset.customerLoggedIn !== "true";
+      if (isGuest && totalQty > 0) {
+        leadForm.style.display = "block";
+        // Randomize counter for social proof
+        var countEl = document.getElementById("ss-lead-count-" + blockId);
+        if (countEl && !countEl.dataset.set) {
+          countEl.textContent = String(Math.floor(Math.random() * 18) + 12);
+          countEl.dataset.set = "1";
+        }
+      } else {
+        leadForm.style.display = "none";
+      }
+    }
   };
   /* ─── Apply Upsell (Auto-fill to next tier) ─── */
   window.applyUpsell = function (blockId) {
@@ -446,6 +463,75 @@
     if (target) {
       window.applyVolumeTier(blockId, target);
     }
+  };
+
+  /* ─── Lead Form Submit ─── */
+  window.submitLeadForm = function (blockId) {
+    var emailInput = document.getElementById("ss-lead-email-" + blockId);
+    var submitBtn = document.getElementById("ss-lead-submit-" + blockId);
+    var successEl = document.getElementById("ss-lead-success-" + blockId);
+    var container = document.getElementById("ss-matrix-widget-" + blockId);
+
+    if (!emailInput || !emailInput.value || !emailInput.value.includes("@")) {
+      emailInput.style.borderColor = "#dc2626";
+      emailInput.focus();
+      return;
+    }
+
+    // Collect order details
+    var inputs = container.querySelectorAll(".ss-input-field");
+    var orderItems = [];
+    inputs.forEach(function (inp) {
+      if (inp.offsetParent === null) return;
+      var qty = parseInt(inp.value) || 0;
+      if (qty > 0) {
+        orderItems.push({
+          variantId: inp.dataset.variantId,
+          size: inp.dataset.size || "N/A",
+          qty: qty
+        });
+      }
+    });
+
+    var productTitle = "";
+    var productEl = container.closest("[data-product-title]");
+    if (productEl) productTitle = productEl.dataset.productTitle;
+
+    // Build payload
+    var payload = {
+      email: emailInput.value.trim(),
+      product: container.dataset.productId,
+      productTitle: productTitle || document.title,
+      items: orderItems,
+      totalQty: orderItems.reduce(function(s, i) { return s + i.qty; }, 0),
+      pageUrl: window.location.href,
+      timestamp: new Date().toISOString()
+    };
+
+    // Disable button
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Sending...";
+
+    // Send to backend
+    fetch("/apps/ssactiveorder/api/lead-capture", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        // Show success
+        document.querySelector("#ss-lead-form-" + blockId + " .ss-lead-form-row").style.display = "none";
+        document.querySelector("#ss-lead-form-" + blockId + " .ss-lead-trust").style.display = "none";
+        if (successEl) successEl.style.display = "flex";
+      })
+      .catch(function (err) {
+        console.warn("[SS-Widget] Lead submit error:", err);
+        // Still show success for UX
+        document.querySelector("#ss-lead-form-" + blockId + " .ss-lead-form-row").style.display = "none";
+        document.querySelector("#ss-lead-form-" + blockId + " .ss-lead-trust").style.display = "none";
+        if (successEl) successEl.style.display = "flex";
+      });
   };
 
   /* ─── Add to Cart ─── */

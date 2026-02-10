@@ -495,3 +495,22 @@ model VolumePriceProduct {
   @@index([ruleId])
   @@index([shopifyProductId])
 }
+
+model LeadCapture {
+  id            String   @id @default(uuid())
+  email         String
+  productId     String   @default("")
+  productTitle  String   @default("")
+  orderDetails  String   @default("[]")           // JSON array of {variantId, size, qty}
+  totalQuantity Int      @default(0)
+  pageUrl       String   @default("")
+  status        String   @default("new")           // new, contacted, converted, closed
+  source        String   @default("bulk-order-widget")
+  notes         String   @default("")              // Merchant notes
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([email])
+  @@index([status])
+  @@index([createdAt])
+}
