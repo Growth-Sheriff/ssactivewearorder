@@ -348,6 +348,52 @@
   text-align: center;
   margin-top: 4px;
   font-weight: 500;
+  cursor: help;
+  position: relative;
+}
+.ss-price-tooltip {
+  visibility: hidden;
+  opacity: 0;
+  width: 140px;
+  background-color: #333;
+  color: #fff;
+  text-align: left;
+  border-radius: 6px;
+  padding: 8px;
+  position: absolute;
+  z-index: 100;
+  bottom: 125%; /* Show above the price */
+  left: 50%;
+  margin-left: -70px;
+  font-size: 10px;
+  line-height: 1.4;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+.ss-price-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: #333 transparent transparent transparent;
+}
+.ss-price-hint:hover .ss-price-tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+.ss-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+}
+.ss-tooltip-row.total {
+  border-top: 1px solid #555;
+  margin-top: 4px;
+  padding-top: 2px;
+  font-weight: bold;
 }
 
 /* UPLOAD: Minimalist Tiles */

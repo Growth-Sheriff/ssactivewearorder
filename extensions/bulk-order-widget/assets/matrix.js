@@ -1,9 +1,9 @@
-// SSActiveWear Variant Selection Widget v5.2 (Dynamic Size Pricing + Highlight Fix)
+// SSActiveWear Variant Selection Widget v5.3 (Detailed Pricing Tooltips + Premium Logic)
 (function() {
   document.addEventListener("DOMContentLoaded", initVariantWidgets);
 
   window.uploadedDesigns = {};
-  window.volumeRules = {}; // Store rules { tiers: [], sizePremiums: [], basePrice: 0 }
+  window.volumeRules = {};
 
   function initVariantWidgets() {
     const widgets = document.querySelectorAll('[id^="ss-matrix-widget-"]');
@@ -22,6 +22,7 @@
     const firstColor = variants[0]?.option1;
     if (firstColor) selectMatrixColor(firstColor, blockId);
 
+    // Show static sections
     const uploadEl = document.getElementById(`ss-upload-${blockId}`);
     if (uploadEl) uploadEl.style.display = 'block';
 
@@ -37,57 +38,33 @@
         // Save Rules
         window.volumeRules[blockId] = {
            tiers: data.tiers || [],
-           sizePremiums: data.sizePremiums || [], // e.g. "2XL": +2.00
+           sizePremiums: data.sizePremiums || [],
            basePrice: data.basePrice || 0
         };
 
         if (data.tiers && data.tiers.length > 0) {
-           renderVolumeTable(blockId, data.tiers);
+           renderVolumeTable(blockId, data.tiers, window.volumeRules[blockId].basePrice);
         }
 
-        // Initial Calculation
         updateMatrixTotal(blockId);
       }
     } catch (e) {
-      console.warn("Volume pricing fetch failed", e);
+      console.warn("Pricing fetch failed", e);
     }
   }
 
-  function renderVolumeTable(blockId, tiers) {
+  function renderVolumeTable(blockId, tiers, baseP) {
     const container = document.getElementById(`ss-volume-${blockId}`);
     const content = document.getElementById(`ss-volume-content-${blockId}`);
     if (!container || !content) return;
 
     container.style.display = 'block';
 
-    // We show the BASE discount structure.
-    // Usually Volume Pricing is based on Quantity -> Price (or Discount %).
-    // If it's a fixed price rule, we show the price. If percentage, we show % off?
-    // User image shows PRICE ($3.49). This implies a fixed price tier or calculated from base.
-    // We'll calculate display price based on Rule Base Price (if available) or assume user wants to see logic.
-    // Best UX: Show the PRICE for a standard size (e.g. S-XL).
-
-    const rule = window.volumeRules[blockId];
-    const baseP = rule.basePrice || 0; // Cost Price?
-
     content.innerHTML = tiers.map(t => {
-       // Display Logic: If rule has Base Price, show calculated price. Else show Discount %.
        let label = "";
        if (t.type === 'percentage') {
-          label = `-${t.value}%`; // Fallback
-          // If we have a base price, calculate:
-          if (baseP > 0) {
-             const p = baseP * (1 - t.value / 100); // Wait, basePrice is usually COST.
-             // If Volume Pricing is "Discount from Retail", we don't have a single Retail price.
-             // But if specific price is enforced (fixed), we show it.
-          }
+          label = `-${t.value}%`;
        } else {
-          // Fixed discount or Fixed Price?
-          // Usually 'fixed' in this app context might mean "Fixed Price per item" or "Fixed Discount Amount".
-          // Looking at standard logic: Amount Off or Fixed Price.
-          // Let's assume Fixed Price if big number, Amount Off if small?
-          // Prisma schema says: "discountValue".
-          // If the user sees $3.49, it's likely the Final Price.
           label = `$${t.value.toFixed(2)}`;
        }
 
@@ -105,31 +82,32 @@
   }
 
   window.applyVolumeTier = function(blockId, minQty) {
-    // Helper to auto-fill meaningful quantity if user clicks tier
     const container = document.getElementById(`ss-matrix-widget-${blockId}`);
     const inputs = container.querySelectorAll('.ss-input-field:not(:disabled)');
 
-    // Check current total
     let currentTotal = 0;
     container.querySelectorAll('.ss-input-field').forEach(i => currentTotal += (parseInt(i.value) || 0));
 
-    if (currentTotal >= minQty) return; // Already met
+    if (currentTotal >= minQty) return;
 
     const needed = minQty - currentTotal;
 
-    // Find first available input (or currently focused?)
-    // Prefer "L" or "M" or first one.
-    let target = inputs[0];
-    inputs.forEach(inp => {
-       if (inp.dataset.sizeName === 'L' || inp.dataset.sizeName === 'M') target = inp;
-    });
+    // Find visibly active inputs
+    let target = null; // Prefer visible inputs
+    const visibleInputs = Array.from(inputs).filter(i => i.offsetParent !== null);
+
+    if (visibleInputs.length > 0) {
+       // Prefer L, M, S
+       target = visibleInputs.find(i => i.dataset.sizeName === 'L' || i.dataset.sizeName === 'M') || visibleInputs[0];
+    } else {
+       target = inputs[0];
+    }
 
     if (target) {
        const oldVal = parseInt(target.value) || 0;
        target.value = oldVal + needed;
-       updateMatrixTotal(blockId); // Recalc
+       updateMatrixTotal(blockId);
 
-       // Flash effect
        target.style.transition = "background 0.3s";
        target.style.background = "#dbeafe";
        setTimeout(() => target.style.background = "#fff", 600);
@@ -147,7 +125,6 @@
     const label = container.querySelector('#ss-selected-color-name');
     if (label) label.textContent = `: ${colorName}`;
 
-    // Show correct Size Group
     container.querySelectorAll('.ss-size-group').forEach(group => {
       group.style.display = (group.dataset.colorGroup === colorName) ? 'block' : 'none';
     });
@@ -166,12 +143,6 @@
 
     let totalQty = 0;
     inputs.forEach(inp => {
-      // Only count visible inputs (for selected color)?
-      // No, usually bulk order allows mixing colors.
-      // BUT our UI hides other colors.
-      // If we want MIXED colors, we shouldn't hide them or we should serialize all inputs.
-      // Current logic: We only show ONE color group at a time. This implies Single Color selection.
-      // So we only count visible inputs.
       if (inp.offsetParent !== null) {
          totalQty += parseInt(inp.value) || 0;
       }
@@ -185,7 +156,7 @@
        activeTier = rule.tiers.find(t => totalQty >= t.min && totalQty <= (t.max || 999999));
     }
 
-    // 2. Highlight Table (Fix: Explicit class manipulation)
+    // 2. Highlight Table
     const volumeContent = document.getElementById(`ss-volume-content-${blockId}`);
     if (volumeContent) {
        volumeContent.querySelectorAll('.ss-volume-cell').forEach(cell => {
@@ -193,7 +164,7 @@
           const max = parseInt(cell.dataset.max);
           if (totalQty >= min && totalQty <= max) {
              cell.classList.add('active');
-             cell.style.background = '#dbeafe'; // Inline fallback
+             cell.style.background = '#dbeafe';
              cell.style.borderBottom = '3px solid #3b82f6';
           } else {
              cell.classList.remove('active');
@@ -203,64 +174,66 @@
        });
     }
 
-    // 3. Calculate Total & Update Per-Item Prices
+    // 3. Calculate Total & Update Per-Item Prices and Tooltips
     let grandTotal = 0;
 
     inputs.forEach(inp => {
-      if (inp.offsetParent === null) return; // Skip hidden
+      if (inp.offsetParent === null) return;
 
       const qty = parseInt(inp.value) || 0;
       const variantPrice = parseFloat(inp.dataset.price) || 0;
       const variantId = inp.dataset.variantId;
       const sizeName = inp.dataset.sizeName || "";
 
-      // Calculate Price for this item
-      // Start with Variant Price (Shopify Retail)
       let itemPrice = variantPrice;
+      let tooltipHtml = `<div class="ss-tooltip-row"><span>Base Price:</span> <span>$${variantPrice.toFixed(2)}</span></div>`;
 
-      // Apply Volume Discount
-      // Usually Tier Logic:
-      // If Tier is Percentage -> Price = Price * (1 - val/100)
-      // If Tier is Fixed Price -> Price = val (This overrides variant price!)
-      // If Tier is Fixed Off -> Price = Price - val
-
-      // We need to know what "discountType" means in this App.
-      // Looking at table ($3.49, $3.14), these look like Fixed Prices.
-      // So if activeTier.type == 'fixed' or value is > 1 (and looks like price), we assume Override.
-
+      // Discount Logic
       if (activeTier) {
          if (activeTier.type === 'percentage') {
-             itemPrice = itemPrice * (1 - activeTier.value / 100);
+             const discAmount = itemPrice * (activeTier.value / 100);
+             itemPrice -= discAmount;
+             tooltipHtml += `<div class="ss-tooltip-row"><span>Vol Discount (-${activeTier.value}%):</span> <span>-$${discAmount.toFixed(2)}</span></div>`;
          } else {
-             // Assume Fixed Price per item
+             // Fixed Price Override
+             // Usually Base Price is replaced by this.
+             // But if we want to show 'Detail', we show difference.
+             const oldP = itemPrice;
              itemPrice = activeTier.value;
+             const diff = oldP - itemPrice;
+             if (diff > 0) tooltipHtml += `<div class="ss-tooltip-row"><span>Vol Price:</span> <span>-$${diff.toFixed(2)}</span></div>`;
          }
       }
 
-      // Apply Size Premium?
-      // Use case: 2XL is +$2.
-      // If we use Fixed Price Tier ($3.49), does it include Premium?
-      // Usually NO. $3.49 is base. 2XL should be $5.49.
-      // So we ADD premium.
+      // Size Premium Logic
       if (rule && rule.sizePremiums) {
           const premium = rule.sizePremiums.find(p => sizeName.includes(p.pattern) || sizeName === p.pattern);
           if (premium) {
+             let premAmount = 0;
              if (premium.type === 'percentage') {
-                 itemPrice = itemPrice * (1 + premium.value / 100);
+                 premAmount = itemPrice * (premium.value / 100); // Percentage of discounted price? Or Base?
+                 // Usually Premium is strict add-on. Base * %.
+                 // But let's assume simple addition to current price for safety.
+                 itemPrice += premAmount;
+                 tooltipHtml += `<div class="ss-tooltip-row"><span>Size Prem (+${premium.value}%):</span> <span>+$${premAmount.toFixed(2)}</span></div>`;
              } else {
-                 itemPrice = itemPrice + premium.value;
+                 premAmount = premium.value;
+                 itemPrice += premAmount;
+                 tooltipHtml += `<div class="ss-tooltip-row"><span>Size Prem:</span> <span>+$${premAmount.toFixed(2)}</span></div>`;
              }
           }
       }
 
       if (qty > 0) grandTotal += qty * itemPrice;
 
-      // Update Hint
+      // Update Hint with Tooltip
       const hintEl = document.getElementById(`price-hint-${variantId}`);
       if (hintEl) {
-         hintEl.textContent = `$${itemPrice.toFixed(2)}`;
-         // Colorize logic?
-         if (activeTier) hintEl.style.color = '#16a34a'; // Green if discounted
+         tooltipHtml += `<div class="ss-tooltip-row total"><span>Final Price:</span> <span>$${itemPrice.toFixed(2)}</span></div>`;
+
+         hintEl.innerHTML = `$${itemPrice.toFixed(2)} <div class="ss-price-tooltip">${tooltipHtml}</div>`;
+
+         if (activeTier) hintEl.style.color = '#16a34a'; // Green
          else hintEl.style.color = '#666';
       }
     });
@@ -269,20 +242,11 @@
     if (btn) btn.disabled = totalQty === 0;
   };
 
-  // Add To Cart (unchanged logic)
+  // ─── ADD TO CART ───
   window.addToCart = async function(blockId) {
-    // ... (Same as previous script) ...
-    // Note: We are just submitting Variant IDs.
-    // If prices are dynamic, they WON'T reflect in Cart unless backend intercepts.
-    // Assuming backend or Shopify Script handles it.
-
-    // Copy-paste previous addToCart implementation here for completeness
     const btn = document.getElementById(`ss-add-to-cart-${blockId}`);
     const container = document.getElementById(`ss-matrix-widget-${blockId}`);
     const inputs = container.querySelectorAll('.ss-input-field');
-
-    // Check if mixing colors logic needed?
-    // For now, only visible inputs.
 
     const items = [];
     inputs.forEach(inp => {
@@ -290,7 +254,6 @@
        const qty = parseInt(inp.value) || 0;
        if (qty > 0) {
          const item = { id: inp.dataset.variantId, quantity: qty, properties: {} };
-         // Attach uploads
          if (window.uploadedDesigns) {
             Object.keys(window.uploadedDesigns).forEach(loc => {
                const d = window.uploadedDesigns[loc];
@@ -322,28 +285,37 @@
     }
   };
 
+  // Upload Logic (Condensed safety version)
   window.handleFileUpload = async function(input, locationName, blockId) {
-     // ... Same logic ...
-     // (Using the fix directly to save space, assuming user has it)
-     // Or re-implement shorter version:
      const file = input.files[0];
      if (!file) return;
      const preview = document.getElementById(`preview-${locationName}-${blockId}`);
      const placeholder = document.getElementById(`placeholder-${locationName}-${blockId}`);
-     placeholder.innerHTML = '...';
+     const previewImg = preview.querySelector('.ss-preview-image');
+
+     const originHtml = placeholder.innerHTML;
+     placeholder.innerHTML = '<span class="ss-upload-text">...</span>';
 
      const fd = new FormData(); fd.append('file', file);
      try {
        const res = await fetch('/apps/ssactiveorder/api/upload', { method:'POST', body:fd });
+       if (!res.ok) throw new Error('Upload server error');
        const json = await res.json();
        if (json.success) {
           window.uploadedDesigns[locationName] = json;
           placeholder.style.display='none';
           preview.style.display='flex';
-          let html = file.type.startsWith('image') ? `<img src="${json.url}" style="width:100%;height:100%;object-fit:cover;border-radius:12px">` : '📄';
-          preview.querySelector('.ss-preview-image').innerHTML = html;
-       }
-     } catch(e) { console.error(e); placeholder.innerHTML='+'; }
+          if (file.type.startsWith('image')) {
+             previewImg.innerHTML = `<img src="${json.url}" style="width:100%;height:100%;object-fit:cover;border-radius:12px">`;
+          } else {
+             previewImg.innerHTML = '📄';
+          }
+       } else throw new Error(json.error);
+     } catch(e) {
+       console.error(e);
+       alert('Upload Failed: ' + e.message);
+       placeholder.innerHTML = originHtml;
+     }
   };
 
   window.removeUpload = function(loc, bid) {
@@ -351,6 +323,7 @@
      document.getElementById(`placeholder-${loc}-${bid}`).style.display='flex';
      document.getElementById(`placeholder-${loc}-${bid}`).innerHTML=`<span class="ss-upload-icon">+</span><span class="ss-upload-text">${loc}</span>`;
      document.getElementById(`preview-${loc}-${bid}`).style.display='none';
+     document.getElementById(`file-input-${loc}-${bid}`).value = '';
   };
 
 })();
