@@ -3,10 +3,11 @@
   "use strict";
   console.log("[SS-Widget] v6.0 loaded");
 
-  document.addEventListener("DOMContentLoaded", initVariantWidgets);
+  window.uploadedDesigns = window.uploadedDesigns || {};
+  window.volumeRules = window.volumeRules || {};
+  window.shippingData = window.shippingData || {};
 
-  window.uploadedDesigns = {};
-  window.volumeRules = {};
+  document.addEventListener("DOMContentLoaded", initVariantWidgets);
 
   function initVariantWidgets() {
     var widgets = document.querySelectorAll('[id^="ss-matrix-widget-"]');
@@ -44,6 +45,25 @@
         window.updateMatrixTotal(blockId);
       })
       .catch(function (e) { console.warn("[SS-Widget] pricing fetch", e); });
+
+    // Fetch real shipping data from Shopify
+    var shopDomain = window.Shopify && window.Shopify.shop ? window.Shopify.shop : "";
+    if (shopDomain) {
+      fetch("/apps/ssactiveorder/api/shipping-estimate?shop=" + shopDomain)
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          if (data) {
+            window.shippingData[blockId] = data;
+            // Update threshold on the DOM element if API returned one
+            if (data.freeShippingThreshold) {
+              var shipEl = document.getElementById("ss-shipping-" + blockId);
+              if (shipEl) shipEl.dataset.threshold = data.freeShippingThreshold;
+            }
+            window.updateMatrixTotal(blockId);
+          }
+        })
+        .catch(function (e) { console.warn("[SS-Widget] shipping fetch", e); });
+    }
   }
 
   /* ─── Volume Discount Table ─── */
@@ -339,8 +359,11 @@
     if (shipSection) {
       if (totalQty > 0) {
         shipSection.style.display = "block";
+        var shipData = window.shippingData && window.shippingData[blockId];
+        var threshold = shipData && shipData.freeShippingThreshold
+          ? parseFloat(shipData.freeShippingThreshold)
+          : (parseFloat(shipSection.dataset.threshold) || 500);
 
-        var threshold = parseFloat(shipSection.dataset.threshold) || 499;
         var fillEl = document.getElementById("ss-shipping-fill-" + blockId);
         var textEl = document.getElementById("ss-shipping-text-" + blockId);
         var deliveryEl = document.getElementById("ss-delivery-" + blockId);
@@ -348,11 +371,8 @@
 
         if (fillEl) {
           fillEl.style.width = pct + "%";
-          if (pct >= 100) {
-            fillEl.classList.add("done");
-          } else {
-            fillEl.classList.remove("done");
-          }
+          if (pct >= 100) { fillEl.classList.add("done"); }
+          else { fillEl.classList.remove("done"); }
         }
 
         if (textEl) {
@@ -364,47 +384,30 @@
           }
         }
 
-        // Delivery estimate
-        if (deliveryEl) {
-          var now = new Date();
-          var estHour = now.getUTCHours() - 5; // EST
-          if (estHour < 0) estHour += 24;
-          var shipsToday = estHour < 14; // Before 2 PM EST
-
-          // Add business days
-          function addBizDays(date, days) {
-            var d = new Date(date);
-            var added = 0;
-            while (added < days) {
-              d.setDate(d.getDate() + 1);
-              var dow = d.getDay();
-              if (dow !== 0 && dow !== 6) added++;
+        // Show available shipping methods from API
+        if (deliveryEl && shipData && shipData.zones && shipData.zones.length > 0) {
+          var methodsHtml = "📦 Shipping: ";
+          var shown = [];
+          for (var zi = 0; zi < shipData.zones.length; zi++) {
+            var z = shipData.zones[zi];
+            for (var mi = 0; mi < z.methods.length; mi++) {
+              var m = z.methods[mi];
+              if (shown.indexOf(m.name) === -1) {
+                shown.push(m.name);
+                if (m.isFree) {
+                  methodsHtml += "<strong>" + m.name + " (FREE)</strong> ";
+                } else {
+                  methodsHtml += m.name + " ($" + m.price.toFixed(2) + ") ";
+                }
+                if (shown.length < 3) methodsHtml += " · ";
+              }
+              if (shown.length >= 3) break;
             }
-            return d;
+            if (shown.length >= 3) break;
           }
-
-          var processStart = shipsToday ? now : new Date(now.getTime() + 86400000);
-          var procDays = 2; // default
-          var shipMin = 3;
-          var shipMax = 7;
-          var earliest = addBizDays(processStart, procDays + shipMin);
-          var latest = addBizDays(processStart, procDays + shipMax);
-
-          var months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-          var earlyStr = months[earliest.getMonth()] + " " + earliest.getDate();
-          var lateStr = months[latest.getMonth()] + " " + latest.getDate();
-
-          var cutoffMsg = "";
-          if (shipsToday) {
-            var hrs = 13 - estHour;
-            var mins = 60 - now.getMinutes();
-            if (mins === 60) { mins = 0; } else { hrs--; }
-            if (hrs > 0 || mins > 0) {
-              cutoffMsg = ' · <span class="ss-delivery-countdown">Order within ' + hrs + 'h ' + mins + 'm for faster delivery</span>';
-            }
-          }
-
-          deliveryEl.innerHTML = "📦 Est. delivery: <strong>" + earlyStr + " – " + lateStr + "</strong>" + cutoffMsg;
+          deliveryEl.innerHTML = methodsHtml;
+        } else if (deliveryEl) {
+          deliveryEl.innerHTML = "📦 Shipping calculated at checkout";
         }
       } else {
         shipSection.style.display = "none";
