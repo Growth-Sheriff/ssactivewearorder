@@ -38,7 +38,8 @@
 
           <div class="ss-color-circle">
             {% if variant_image %}
-              <img src="{{ variant_image | img_url: '100x100', crop: 'center' }}" alt="{{ color_name }}">
+              <img src="{{ variant_image | img_url: '100x100', crop: 'center' }}"
+                   alt="{{ color_name }}" width="100" height="100" loading="lazy">
             {% else %}
               <span class="ss-no-img"></span>
             {% endif %}
@@ -361,7 +362,7 @@
   border-radius: 6px;
   padding: 8px;
   position: absolute;
-  z-index: 100;
+  z-index: 99999 !important;
   bottom: 125%; /* Show above the price */
   left: 50%;
   margin-left: -70px;
@@ -370,6 +371,7 @@
   box-shadow: 0 4px 10px rgba(0,0,0,0.2);
   transition: opacity 0.3s;
   pointer-events: none;
+  white-space: nowrap;
 }
 .ss-price-tooltip::after {
   content: "";
@@ -539,7 +541,6 @@
 {
   "name": "SS Matrix Order V4",
   "target": "section",
-  "stylesheet": "matrix.css",
   "javascript": "matrix.js",
   "settings": [
     { "type": "text", "id": "widget_title", "label": "Widget Title", "default": "Quick Order" },
