@@ -129,12 +129,12 @@
     {% endfor %}
   </div>
 
-  <!-- 4. UPLOAD: Modern Dropzone (Always Visible if Configured) -->
-  {%- assign upload_locations = shop.metafields.ss_custom.upload_locations.value -%}
+  <!-- 4. UPLOAD: Dynamic from DB via product metafield or API fallback -->
+  {%- assign upload_locations = product.metafields.ss_custom.upload_locations.value -%}
   {%- if upload_locations != blank -%}
     <div class="ss-section ss-upload-wrapper" id="ss-upload-{{ block.id }}">
       <div class="ss-label">Upload Artwork</div>
-      <div class="ss-upload-row">
+      <div class="ss-upload-row" id="ss-upload-row-{{ block.id }}">
         {% for location in upload_locations %}
           <div class="ss-upload-card" onclick="document.getElementById('file-input-{{ location.name }}-{{ block.id }}').click()">
             <div class="ss-upload-content" id="placeholder-{{ location.name }}-{{ block.id }}">
@@ -151,6 +151,37 @@
                    onchange="window.handleFileUpload(this, '{{ location.name }}', '{{ block.id }}')">
           </div>
         {% endfor %}
+      </div>
+    </div>
+  {%- else -%}
+    <!-- Dynamic: JS will populate from DB API, default: Front + Back -->
+    <div class="ss-section ss-upload-wrapper" id="ss-upload-{{ block.id }}">
+      <div class="ss-label">Upload Artwork</div>
+      <div class="ss-upload-row" id="ss-upload-row-{{ block.id }}">
+        <div class="ss-upload-card" onclick="document.getElementById('file-input-full_front-{{ block.id }}').click()">
+          <div class="ss-upload-content" id="placeholder-full_front-{{ block.id }}">
+            <span class="ss-upload-icon">+</span>
+            <span class="ss-upload-text">Front</span>
+          </div>
+          <div class="ss-upload-preview" id="preview-full_front-{{ block.id }}" style="display:none;">
+            <div class="ss-preview-image"></div>
+            <button class="ss-remove-btn" onclick="event.stopPropagation(); window.removeUpload('full_front', '{{ block.id }}')">×</button>
+          </div>
+          <input type="file" id="file-input-full_front-{{ block.id }}" hidden
+                 onchange="window.handleFileUpload(this, 'full_front', '{{ block.id }}')">
+        </div>
+        <div class="ss-upload-card" onclick="document.getElementById('file-input-full_back-{{ block.id }}').click()">
+          <div class="ss-upload-content" id="placeholder-full_back-{{ block.id }}">
+            <span class="ss-upload-icon">+</span>
+            <span class="ss-upload-text">Back</span>
+          </div>
+          <div class="ss-upload-preview" id="preview-full_back-{{ block.id }}" style="display:none;">
+            <div class="ss-preview-image"></div>
+            <button class="ss-remove-btn" onclick="event.stopPropagation(); window.removeUpload('full_back', '{{ block.id }}')">×</button>
+          </div>
+          <input type="file" id="file-input-full_back-{{ block.id }}" hidden
+                 onchange="window.handleFileUpload(this, 'full_back', '{{ block.id }}')">
+        </div>
       </div>
     </div>
   {%- endif -%}

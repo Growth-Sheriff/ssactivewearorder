@@ -63,6 +63,40 @@
           }
         })
         .catch(function (e) { console.warn("[SS-Widget] shipping fetch", e); });
+
+      // Fetch upload locations from DB API
+      if (productId) {
+        fetch("/apps/ssactiveorder/api/upload-locations?shop=" + shopDomain + "&productId=" + productId)
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (data) {
+            if (!data || !data.locations || data.locations.length === 0) return;
+            // Only replace if these come from the database (not defaults)
+            if (data.source !== "database") return;
+            var uploadRow = document.getElementById("ss-upload-row-" + blockId);
+            if (!uploadRow) return;
+
+            // Rebuild upload cards from DB data
+            var html = "";
+            for (var i = 0; i < data.locations.length; i++) {
+              var loc = data.locations[i];
+              html += '<div class="ss-upload-card" onclick="document.getElementById(\'file-input-' + loc.name + '-' + blockId + '\').click()">';
+              html += '  <div class="ss-upload-content" id="placeholder-' + loc.name + '-' + blockId + '">';
+              html += '    <span class="ss-upload-icon">+</span>';
+              html += '    <span class="ss-upload-text">' + loc.label + '</span>';
+              html += '  </div>';
+              html += '  <div class="ss-upload-preview" id="preview-' + loc.name + '-' + blockId + '" style="display:none;">';
+              html += '    <div class="ss-preview-image"></div>';
+              html += '    <button class="ss-remove-btn" onclick="event.stopPropagation(); window.removeUpload(\'' + loc.name + '\', \'' + blockId + '\')">×</button>';
+              html += '  </div>';
+              html += '  <input type="file" id="file-input-' + loc.name + '-' + blockId + '" hidden';
+              html += '         onchange="window.handleFileUpload(this, \'' + loc.name + '\', \'' + blockId + '\')">';
+              html += '</div>';
+            }
+            uploadRow.innerHTML = html;
+            console.log("[SS-Widget] Upload locations loaded from DB:", data.locations.length);
+          })
+          .catch(function (e) { console.warn("[SS-Widget] upload locations fetch", e); });
+      }
     }
   }
 

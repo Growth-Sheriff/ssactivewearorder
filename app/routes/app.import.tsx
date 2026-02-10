@@ -30,6 +30,7 @@ interface LoaderData {
   style: SSStyle | null;
   products: any[];
   styleId: string | null;
+  uploadLocations: Array<{ name: string; label: string; icon: string }>;
   error?: string;
 }
 
@@ -41,13 +42,13 @@ interface ActionData {
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
 
   const url = new URL(request.url);
   const styleId = url.searchParams.get("styleId");
 
   if (!styleId) {
-    return json<LoaderData>({ style: null, products: [], styleId: null });
+    return json<LoaderData>({ style: null, products: [], styleId: null, uploadLocations: [{ name: "full_front", label: "Front", icon: "full_front" }, { name: "full_back", label: "Back", icon: "full_back" }] });
   }
 
   const client = new SSActiveWearClient();
@@ -56,10 +57,35 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const style = styles.find((s: SSStyle) => s.styleID === Number(styleId)) || null;
     const products = await client.getProducts(Number(styleId));
 
-    return json<LoaderData>({ style, products, styleId });
+    // Fetch upload locations from DB — default to Front/Back if none configured
+    const defaultLocations = [
+      { name: "full_front", label: "Front", icon: "full_front" },
+      { name: "full_back", label: "Back", icon: "full_back" },
+    ];
+    let uploadLocations = defaultLocations;
+    try {
+      const { default: prismaClient } = await import("../db.server");
+      // Look for locations for any product matching this style
+      const productMap = await prismaClient.productMap.findFirst({
+        where: { shop: session.shop, ssStyleId: String(styleId) },
+      });
+      if (productMap) {
+        const dbLocations = await prismaClient.productUploadLocation.findMany({
+          where: { shop: session.shop, shopifyProductId: productMap.shopifyProductId },
+          orderBy: { sortOrder: "asc" },
+        });
+        if (dbLocations.length > 0) {
+          uploadLocations = dbLocations.map(l => ({ name: l.name, label: l.label, icon: l.iconType }));
+        }
+      }
+    } catch (e) {
+      // Use defaults
+    }
+
+    return json<LoaderData>({ style, products, styleId, uploadLocations });
   } catch (error) {
     console.error("Failed to fetch style details:", error);
-    return json<LoaderData>({ style: null, products: [], styleId, error: "Failed to fetch from SSActiveWear" });
+    return json<LoaderData>({ style: null, products: [], styleId, uploadLocations: [{ name: "full_front", label: "Front", icon: "full_front" }, { name: "full_back", label: "Back", icon: "full_back" }], error: "Failed to fetch from SSActiveWear" });
   }
 }
 
@@ -131,8 +157,8 @@ export default function ImportPage() {
   const [quickType, setQuickType] = useState("percentage");
   const [quickValue, setQuickValue] = useState("");
 
-  // Upload locations
-  const [uploadLocations] = useState<string[]>(["Front", "Back"]);
+  // Upload locations from DB
+  const uploadLocations = loaderData?.uploadLocations || [{ name: "full_front", label: "Front", icon: "full_front" }, { name: "full_back", label: "Back", icon: "full_back" }];
 
   useEffect(() => {
     if (actionData?.success) {
@@ -304,7 +330,7 @@ export default function ImportPage() {
                   <Text as="h3" variant="headingSm">Upload Locations</Text>
                   <InlineStack gap="200">
                     {uploadLocations.map(loc => (
-                      <Badge key={loc} tone="success">{loc}</Badge>
+                      <Badge key={loc.name} tone="success">{loc.label}</Badge>
                     ))}
                   </InlineStack>
                 </BlockStack>
@@ -660,7 +686,7 @@ export default function ImportPage() {
                 </Text>
                 <InlineStack gap="200">
                   {uploadLocations.map(loc => (
-                    <Badge key={loc} tone="success">{loc}</Badge>
+                    <Badge key={loc.name} tone="success">{loc.label}</Badge>
                   ))}
                 </InlineStack>
               </BlockStack>
