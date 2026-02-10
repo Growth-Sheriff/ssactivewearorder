@@ -33,6 +33,36 @@ export class ImporterService {
 
     console.log(`[Importer] "${style.title}" - ${products.length} SKUs`);
 
+    // Cache style info for quick-reorder
+    try {
+      const s = style as any;
+      await prisma.sSStyleCache.upsert({
+        where: { styleId },
+        create: {
+          styleId,
+          partNumber: s.partNumber || "",
+          brandId: s.brandID || 0,
+          brandName: s.brandName || "",
+          styleName: s.styleName || s.title || "",
+          title: s.title || `Style ${styleId}`,
+          description: s.description || "",
+          baseCategory: s.baseCategory || "",
+          categories: Array.isArray(s.categories) ? s.categories.join(",") : (s.categories || ""),
+          styleImage: s.styleImage || "",
+          basePrice: s.basePrice || 0,
+        },
+        update: {
+          styleName: s.styleName || s.title || "",
+          title: s.title || `Style ${styleId}`,
+          brandName: s.brandName || "",
+          styleImage: s.styleImage || "",
+          basePrice: s.basePrice || 0,
+        },
+      });
+    } catch (e) {
+      console.warn("[Importer] Failed to cache style:", e);
+    }
+
     // 2. Prepare data
     const { normalizedProducts, uniqueColors, uniqueSizes, colorImages } = this.prepareData(products);
     console.log(`[Importer] ${uniqueColors.length} colors, ${uniqueSizes.length} sizes, ${normalizedProducts.length} variants`);

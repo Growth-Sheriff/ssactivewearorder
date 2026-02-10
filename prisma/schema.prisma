@@ -514,3 +514,16 @@ model LeadCapture {
   @@index([status])
   @@index([createdAt])
 }
+
+// ═══════════════════════════════════════════════════════
+// Reorder Cart (persisted cart for quick-reorder page)
+// ═══════════════════════════════════════════════════════
+model ReorderCart {
+  id        String   @id @default(uuid())
+  shop      String
+  items     String   @default("[]")   // JSON array of CartItem
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shop])
+}
