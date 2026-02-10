@@ -2,6 +2,7 @@ import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { makeExecutableSchema } from "@graphql-tools/schema";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json, unstable_parseMultipartFormData } from "@remix-run/node";
+import crypto from "crypto";
 import { createYoga } from "graphql-yoga";
 import { resolvers } from "../graphql/resolvers";
 import { typeDefs } from "../graphql/schema";
