@@ -3,7 +3,12 @@
      data-variants='{{ product.variants | json | escape }}'
      data-product-id="{{ product.id }}"
      data-show-warehouse="{{ block.settings.show_warehouse }}"
-     data-button-text="{{ block.settings.button_text }}">
+     data-button-text="{{ block.settings.button_text }}"
+     data-customer-logged-in="{% if customer %}true{% else %}false{% endif %}"
+     data-customer-name="{{ customer.first_name | escape }}"
+     data-vip-discount="{{ block.settings.vip_discount | default: 10 }}"
+     data-vip-min-order="{{ block.settings.vip_min_order | default: 200 }}"
+     data-vip-enabled="{{ block.settings.vip_enabled | default: false }}">
 
   <!-- 1. HEADER: Ultra Minimalist -->
   <div class="ss-header">
@@ -12,6 +17,27 @@
       <span class="ss-spinner"></span>
     </div>
   </div>
+
+  <!-- VIP MEMBER ALERT (Only for logged-in customers) -->
+  {% if customer and block.settings.vip_enabled %}
+  <div class="ss-vip-alert" id="ss-vip-alert-{{ block.id }}">
+    <div class="ss-vip-badge">👑 VIP</div>
+    <div class="ss-vip-body">
+      <div class="ss-vip-title" id="ss-vip-title-{{ block.id }}">
+        Welcome back, {{ customer.first_name }}! You qualify for member-exclusive pricing.
+      </div>
+      <div class="ss-vip-detail" id="ss-vip-detail-{{ block.id }}">
+        🔥 Extra <strong>{{ block.settings.vip_discount | default: 10 }}% OFF</strong> on orders over
+        <strong>${{ block.settings.vip_min_order | default: 200 }}</strong> — on top of volume discounts!
+      </div>
+      <div class="ss-vip-status" id="ss-vip-status-{{ block.id }}"></div>
+    </div>
+  </div>
+  {% elsif customer == nil and block.settings.vip_enabled %}
+  <div class="ss-vip-guest-hint" id="ss-vip-guest-{{ block.id }}">
+    🔐 <a href="/account/login" class="ss-vip-login-link">Sign in</a> to unlock <strong>exclusive member discounts</strong> on bulk orders!
+  </div>
+  {% endif %}
 
   <!-- 2. COLOR SELECTION: Modern Floating Circles -->
   <!-- Logic: Get unique colors safely using 'map' and 'uniq' filters -->
@@ -186,6 +212,99 @@
 }
 
 /* HEADER */
+/* ─── VIP MEMBER ALERT ─── */
+.ss-vip-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: linear-gradient(135deg, #450a0a, #7f1d1d, #991b1b);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 16px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  position: relative;
+  overflow: hidden;
+  animation: ss-vip-in 0.6s ease-out;
+}
+.ss-vip-alert::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 200%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
+  animation: ss-vip-shimmer 3s ease-in-out infinite;
+}
+@keyframes ss-vip-shimmer {
+  0% { transform: translateX(-50%); }
+  100% { transform: translateX(50%); }
+}
+@keyframes ss-vip-in {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ss-vip-badge {
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  color: #450a0a;
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  padding: 5px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+.ss-vip-body {
+  flex: 1;
+  position: relative;
+  z-index: 1;
+}
+.ss-vip-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fecaca;
+  margin-bottom: 4px;
+}
+.ss-vip-detail {
+  font-size: 12px;
+  color: #fca5a5;
+  line-height: 1.6;
+}
+.ss-vip-detail strong {
+  color: #fff;
+  font-weight: 700;
+}
+.ss-vip-status {
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.ss-vip-status.active {
+  color: #86efac;
+}
+.ss-vip-status.pending {
+  color: #fde68a;
+}
+/* Guest hint (not logged in) */
+.ss-vip-guest-hint {
+  background: rgba(254, 242, 242, 0.6);
+  border: 1px solid rgba(252, 165, 165, 0.3);
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-size: 12px;
+  color: #991b1b;
+  margin-bottom: 16px;
+  text-align: center;
+}
+.ss-vip-login-link {
+  color: #dc2626;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ss-vip-login-link:hover {
+  color: #b91c1c;
+}
+
 .ss-header {
   display: flex;
   justify-content: space-between;
@@ -780,6 +899,10 @@
     { "type": "text", "id": "widget_title", "label": "Widget Title", "default": "Quick Order" },
     { "type": "text", "id": "button_text", "label": "Button Text", "default": "Add to Cart" },
     { "type": "checkbox", "id": "show_warehouse", "label": "Show Warehouse Stock", "default": false },
+    { "type": "header", "content": "🔴 VIP Member Discounts" },
+    { "type": "checkbox", "id": "vip_enabled", "label": "Enable VIP Member Pricing", "default": true },
+    { "type": "range", "id": "vip_discount", "label": "VIP Extra Discount (%)", "min": 5, "max": 50, "step": 5, "default": 10 },
+    { "type": "range", "id": "vip_min_order", "label": "VIP Minimum Order ($)", "min": 50, "max": 2000, "step": 50, "default": 200 },
     { "type": "header", "content": "Shipping & Delivery" },
     { "type": "range", "id": "free_shipping_threshold", "label": "Free Shipping Threshold ($)", "min": 0, "max": 2000, "step": 50, "default": 500 },
     { "type": "range", "id": "processing_days", "label": "Processing Days", "min": 1, "max": 5, "step": 1, "default": 2 },

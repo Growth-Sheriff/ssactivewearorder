@@ -413,6 +413,32 @@
         shipSection.style.display = "none";
       }
     }
+
+    // ═══ 9) VIP MEMBER DISCOUNT STATUS ═══
+    var widgetEl = document.getElementById("ss-matrix-widget-" + blockId);
+    var vipStatus = document.getElementById("ss-vip-status-" + blockId);
+    if (widgetEl && vipStatus && totalQty > 0) {
+      var isLoggedIn = widgetEl.dataset.customerLoggedIn === "true";
+      var vipEnabled = widgetEl.dataset.vipEnabled === "true";
+      var vipDiscount = parseFloat(widgetEl.dataset.vipDiscount) || 10;
+      var vipMinOrder = parseFloat(widgetEl.dataset.vipMinOrder) || 200;
+
+      if (isLoggedIn && vipEnabled) {
+        if (grandTotal >= vipMinOrder) {
+          var vipSavings = (grandTotal * vipDiscount / 100);
+          vipStatus.className = "ss-vip-status active";
+          vipStatus.innerHTML = "✅ VIP discount ACTIVE! You save an extra <strong>$" +
+            vipSavings.toFixed(2) + "</strong> at checkout.";
+        } else {
+          var vipNeeded = (vipMinOrder - grandTotal).toFixed(2);
+          vipStatus.className = "ss-vip-status pending";
+          vipStatus.innerHTML = "⏳ Add <strong>$" + vipNeeded +
+            "</strong> more to activate your " + vipDiscount + "% VIP discount!";
+        }
+      }
+    } else if (vipStatus) {
+      vipStatus.innerHTML = "";
+    }
   };
   /* ─── Apply Upsell (Auto-fill to next tier) ─── */
   window.applyUpsell = function (blockId) {
