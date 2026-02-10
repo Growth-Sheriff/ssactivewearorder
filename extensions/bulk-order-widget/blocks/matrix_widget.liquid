@@ -133,6 +133,12 @@
     <div class="ss-breakdown-alert" id="ss-breakdown-alert-{{ block.id }}" style="display:none;"></div>
   </div>
 
+  <!-- 5b. SMART UPSELL NUDGE -->
+  <div class="ss-upsell-nudge" id="ss-upsell-{{ block.id }}" style="display:none;">
+    <div class="ss-upsell-content" id="ss-upsell-content-{{ block.id }}"></div>
+    <button class="ss-upsell-apply" id="ss-upsell-btn-{{ block.id }}" onclick="window.applyUpsell('{{ block.id }}')">Apply</button>
+  </div>
+
   <!-- 6. FOOTER: Sticky-like Action Bar -->
   <div class="ss-footer">
     <div class="ss-total-wrapper">
@@ -577,6 +583,54 @@
   font-size: 11px;
   font-weight: 600;
   margin-left: 6px;
+}
+
+/* ─── UPSELL NUDGE ─── */
+.ss-upsell-nudge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  border: 1px solid #f59e0b;
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin: 12px 0 20px 0;
+  animation: ss-nudge-in 0.4s ease-out;
+}
+@keyframes ss-nudge-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ss-upsell-content {
+  flex: 1;
+  font-size: 13px;
+  color: #78350f;
+  line-height: 1.5;
+}
+.ss-upsell-content strong {
+  color: #92400e;
+}
+.ss-upsell-apply {
+  flex-shrink: 0;
+  background: #f59e0b;
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 24px;
+  cursor: pointer;
+  transition: all 0.2s;
+  animation: ss-pulse 2s ease-in-out infinite;
+}
+.ss-upsell-apply:hover {
+  background: #d97706;
+  transform: scale(1.05);
+}
+@keyframes ss-pulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(245,158,11,0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(245,158,11,0); }
 }
 
 /* Spinner Animation */

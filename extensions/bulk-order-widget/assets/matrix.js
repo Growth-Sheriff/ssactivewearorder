@@ -277,6 +277,69 @@
         breakdownPanel.style.display = "none";
       }
     }
+
+    // ═══ 7) SMART UPSELL NUDGE ═══
+    var upsellEl = document.getElementById("ss-upsell-" + blockId);
+    var upsellContent = document.getElementById("ss-upsell-content-" + blockId);
+
+    if (upsellEl && upsellContent && rule && rule.tiers && rule.tiers.length > 0) {
+      // Find NEXT tier (the one the customer hasn't reached yet)
+      var nextTier = null;
+      for (var nt = 0; nt < rule.tiers.length; nt++) {
+        if (rule.tiers[nt].min > totalQty) {
+          nextTier = rule.tiers[nt];
+          break;
+        }
+      }
+
+      if (nextTier && totalQty > 0) {
+        var needed = nextTier.min - totalQty;
+
+        // Calculate what the customer would save at next tier
+        var nextDiscLabel = "";
+        var potentialSavings = 0;
+
+        if (nextTier.type === "percentage") {
+          nextDiscLabel = nextTier.value + "% discount";
+          // Estimate savings: current price * next discount - current total
+          // Simple estimate using average unit price
+          var avgPrice = grandTotal / totalQty;
+          var nextTotal = (nextTier.min) * avgPrice * (1 - nextTier.value / 100);
+          potentialSavings = (nextTier.min * avgPrice) - nextTotal;
+        } else {
+          nextDiscLabel = "$" + nextTier.value.toFixed(2) + "/each";
+          // Fixed price tier
+          var currentAvg = grandTotal / totalQty;
+          potentialSavings = (nextTier.min * currentAvg) - (nextTier.min * nextTier.value);
+        }
+
+        // Store next tier min for the Apply button
+        window._upsellTarget = window._upsellTarget || {};
+        window._upsellTarget[blockId] = nextTier.min;
+
+        // Build the nudge message
+        var msg = "💡 <strong>" + needed + " more item" + (needed > 1 ? "s" : "") + "</strong> to unlock " +
+          "<strong>" + nextDiscLabel + "</strong>!";
+        if (potentialSavings > 0) {
+          msg += " <span style='color:#166534;font-weight:700;'>You'd save ~$" + potentialSavings.toFixed(2) + "</span>";
+        }
+
+        upsellContent.innerHTML = msg;
+        upsellEl.style.display = "flex";
+      } else {
+        // Already at highest tier or no items
+        upsellEl.style.display = "none";
+      }
+    } else if (upsellEl) {
+      upsellEl.style.display = "none";
+    }
+  };
+  /* ─── Apply Upsell (Auto-fill to next tier) ─── */
+  window.applyUpsell = function (blockId) {
+    var target = window._upsellTarget && window._upsellTarget[blockId];
+    if (target) {
+      window.applyVolumeTier(blockId, target);
+    }
   };
 
   /* ─── Add to Cart ─── */
