@@ -76,7 +76,13 @@
               <div class="ss-size-item">
                 <div class="ss-size-label-row">
                   <span class="ss-size-name">{{ v.option2 | default: 'One Size' }}</span>
-                  <span class="ss-stock-badge {% if v.inventory_quantity <= 0 %}out{% elsif v.inventory_quantity < 50 %}low{% endif %}" title="{{ v.inventory_quantity }} available"></span>
+                  <span class="ss-stock-count {% if v.inventory_quantity <= 0 %}out{% elsif v.inventory_quantity < 50 %}low{% elsif v.inventory_quantity < 200 %}mid{% endif %}">
+                    {% if v.inventory_quantity > 0 %}
+                      ⭐ {{ v.inventory_quantity }}
+                    {% else %}
+                      Sold Out
+                    {% endif %}
+                  </span>
                 </div>
                 <input type="number"
                        class="ss-input-field"
@@ -122,6 +128,20 @@
       </div>
     </div>
   {%- endif -%}
+
+  <!-- 4b. SHIPPING & DELIVERY INFO -->
+  <div class="ss-section ss-shipping-section" id="ss-shipping-{{ block.id }}" style="display:none;"
+       data-threshold="{{ block.settings.free_shipping_threshold | default: 500 }}">
+    <div class="ss-shipping-bar-wrap">
+      <div class="ss-shipping-label">
+        <span id="ss-shipping-text-{{ block.id }}">🚚 Free shipping on orders over ${{ block.settings.free_shipping_threshold | default: 500 }}</span>
+      </div>
+      <div class="ss-shipping-bar">
+        <div class="ss-shipping-fill" id="ss-shipping-fill-{{ block.id }}" style="width:0%"></div>
+      </div>
+    </div>
+    <div class="ss-delivery-estimate" id="ss-delivery-{{ block.id }}"></div>
+  </div>
 
   <!-- 5. PRICE BREAKDOWN ALERT PANEL (Always Visible) -->
   <div class="ss-breakdown-panel" id="ss-breakdown-{{ block.id }}" style="display:none;">
@@ -326,14 +346,30 @@
   font-weight: 700;
   color: #111;
 }
-.ss-stock-badge {
-  width: 6px;
-  height: 6px;
-  background: #22c55e;
-  border-radius: 50%;
+/* Stock Count with Gold Star */
+.ss-stock-count {
+  font-size: 10px;
+  font-weight: 600;
+  color: #a3a3a3;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
 }
-.ss-stock-badge.low { background: #eab308; }
-.ss-stock-badge.out { background: #ef4444; }
+.ss-stock-count.mid {
+  color: #d97706;
+}
+.ss-stock-count.low {
+  color: #ef4444;
+  animation: ss-stock-blink 2s ease-in-out infinite;
+}
+.ss-stock-count.out {
+  color: #d1d5db;
+  font-style: italic;
+  font-weight: 500;
+}
+@keyframes ss-stock-blink {
+  0%,100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
 
 /* 2026 Input Style: Soft Filled, No heavy border */
 .ss-input-field {
@@ -524,6 +560,59 @@
   cursor: not-allowed;
 }
 
+/* ─── SHIPPING & DELIVERY ─── */
+.ss-shipping-section {
+  margin: 16px 0;
+}
+.ss-shipping-bar-wrap {
+  background: rgba(248, 250, 252, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(226, 232, 240, 0.5);
+  border-radius: 14px;
+  padding: 14px 18px;
+}
+.ss-shipping-label {
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+.ss-shipping-label .ss-ship-done {
+  color: #16a34a;
+  font-weight: 600;
+}
+.ss-shipping-bar {
+  width: 100%;
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.ss-shipping-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #94a3b8, #1e293b);
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+.ss-shipping-fill.done {
+  background: linear-gradient(90deg, #22c55e, #16a34a);
+}
+.ss-delivery-estimate {
+  margin-top: 10px;
+  font-size: 11.5px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ss-delivery-estimate strong {
+  color: #1e293b;
+}
+.ss-delivery-countdown {
+  color: #dc2626;
+  font-weight: 600;
+}
+
 /* ─── BREAKDOWN PANEL (Soft Frosted) ─── */
 .ss-breakdown-panel {
   background: rgba(248, 250, 252, 0.85);
@@ -687,11 +776,15 @@
 {
   "name": "SS Matrix Order V4",
   "target": "section",
-  "javascript": "matrix.js",
   "settings": [
     { "type": "text", "id": "widget_title", "label": "Widget Title", "default": "Quick Order" },
     { "type": "text", "id": "button_text", "label": "Button Text", "default": "Add to Cart" },
     { "type": "checkbox", "id": "show_warehouse", "label": "Show Warehouse Stock", "default": false },
+    { "type": "header", "content": "Shipping & Delivery" },
+    { "type": "range", "id": "free_shipping_threshold", "label": "Free Shipping Threshold ($)", "min": 0, "max": 2000, "step": 50, "default": 500 },
+    { "type": "range", "id": "processing_days", "label": "Processing Days", "min": 1, "max": 5, "step": 1, "default": 2 },
+    { "type": "range", "id": "shipping_days_min", "label": "Shipping Days (Min)", "min": 1, "max": 10, "step": 1, "default": 3 },
+    { "type": "range", "id": "shipping_days_max", "label": "Shipping Days (Max)", "min": 2, "max": 14, "step": 1, "default": 7 },
     { "type": "header", "content": "Colors & Styles" },
     { "type": "color", "id": "primary_color", "label": "Accent Color", "default": "#111111" }
   ]

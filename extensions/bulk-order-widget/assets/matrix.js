@@ -333,6 +333,83 @@
     } else if (upsellEl) {
       upsellEl.style.display = "none";
     }
+
+    // ═══ 8) SHIPPING PROGRESS BAR & DELIVERY ESTIMATE ═══
+    var shipSection = document.getElementById("ss-shipping-" + blockId);
+    if (shipSection) {
+      if (totalQty > 0) {
+        shipSection.style.display = "block";
+
+        var threshold = parseFloat(shipSection.dataset.threshold) || 499;
+        var fillEl = document.getElementById("ss-shipping-fill-" + blockId);
+        var textEl = document.getElementById("ss-shipping-text-" + blockId);
+        var deliveryEl = document.getElementById("ss-delivery-" + blockId);
+        var pct = Math.min((grandTotal / threshold) * 100, 100);
+
+        if (fillEl) {
+          fillEl.style.width = pct + "%";
+          if (pct >= 100) {
+            fillEl.classList.add("done");
+          } else {
+            fillEl.classList.remove("done");
+          }
+        }
+
+        if (textEl) {
+          if (grandTotal >= threshold) {
+            textEl.innerHTML = '🎉 <span class="ss-ship-done">FREE SHIPPING unlocked!</span>';
+          } else {
+            var remaining = (threshold - grandTotal).toFixed(2);
+            textEl.textContent = "🚚 Add $" + remaining + " more for FREE shipping";
+          }
+        }
+
+        // Delivery estimate
+        if (deliveryEl) {
+          var now = new Date();
+          var estHour = now.getUTCHours() - 5; // EST
+          if (estHour < 0) estHour += 24;
+          var shipsToday = estHour < 14; // Before 2 PM EST
+
+          // Add business days
+          function addBizDays(date, days) {
+            var d = new Date(date);
+            var added = 0;
+            while (added < days) {
+              d.setDate(d.getDate() + 1);
+              var dow = d.getDay();
+              if (dow !== 0 && dow !== 6) added++;
+            }
+            return d;
+          }
+
+          var processStart = shipsToday ? now : new Date(now.getTime() + 86400000);
+          var procDays = 2; // default
+          var shipMin = 3;
+          var shipMax = 7;
+          var earliest = addBizDays(processStart, procDays + shipMin);
+          var latest = addBizDays(processStart, procDays + shipMax);
+
+          var months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+          var earlyStr = months[earliest.getMonth()] + " " + earliest.getDate();
+          var lateStr = months[latest.getMonth()] + " " + latest.getDate();
+
+          var cutoffMsg = "";
+          if (shipsToday) {
+            var hrs = 13 - estHour;
+            var mins = 60 - now.getMinutes();
+            if (mins === 60) { mins = 0; } else { hrs--; }
+            if (hrs > 0 || mins > 0) {
+              cutoffMsg = ' · <span class="ss-delivery-countdown">Order within ' + hrs + 'h ' + mins + 'm for faster delivery</span>';
+            }
+          }
+
+          deliveryEl.innerHTML = "📦 Est. delivery: <strong>" + earlyStr + " – " + lateStr + "</strong>" + cutoffMsg;
+        }
+      } else {
+        shipSection.style.display = "none";
+      }
+    }
   };
   /* ─── Apply Upsell (Auto-fill to next tier) ─── */
   window.applyUpsell = function (blockId) {
