@@ -10,12 +10,14 @@
      data-vip-min-order="{{ block.settings.vip_min_order | default: 200 }}"
      data-vip-enabled="{{ block.settings.vip_enabled | default: false }}">
 
-  <!-- 1. HEADER: Ultra Minimalist -->
+  <!-- 1. HEADER: Only if title is set -->
+  {% if block.settings.widget_title != blank %}
   <div class="ss-header">
-    <h3 class="ss-title">{{ block.settings.widget_title | default: 'Quick Order' }}</h3>
-    <div class="ss-loading" style="display:none;">
-      <span class="ss-spinner"></span>
-    </div>
+    <h3 class="ss-title">{{ block.settings.widget_title }}</h3>
+  </div>
+  {% endif %}
+  <div class="ss-loading" style="display:none;">
+    <span class="ss-spinner"></span>
   </div>
 
   <!-- VIP MEMBER ALERT (Only for logged-in customers) -->

@@ -67,18 +67,28 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Get imported styles for selection
   const importedProducts = await prisma.productMap.findMany({
     where: { shop },
-    take: 50,
+    take: 200,
     select: { ssStyleId: true },
   });
 
   const styleIds = [...new Set(importedProducts.map(p => parseInt(p.ssStyleId)))].filter(id => !isNaN(id));
 
-  // Get style details from cache
-  const styleDetails = await prisma.sSStyleCache.findMany({
+  // Try to get style details from cache first
+  let styleDetails = await prisma.sSStyleCache.findMany({
     where: { styleId: { in: styleIds } },
     select: { styleId: true, styleName: true, brandName: true, styleImage: true },
     take: 50,
   });
+
+  // Fallback: if cache is empty, build from productMap data
+  if (styleDetails.length === 0 && styleIds.length > 0) {
+    styleDetails = styleIds.map(sid => ({
+      styleId: sid,
+      styleName: `Style ${sid}`,
+      brandName: "",
+      styleImage: null,
+    }));
+  }
 
   let selectedStyleProducts: SSProduct[] = [];
   let colorVariants: ColorVariant[] = [];
