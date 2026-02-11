@@ -102,15 +102,26 @@
           {% for v in product.variants %}
             {% if v.option1 == color_name %}
               <div class="ss-size-item">
-                <div class="ss-size-label-row">
+                <div class="ss-size-header">
                   <span class="ss-size-name">{{ v.option2 | default: 'One Size' }}</span>
-                  <span class="ss-stock-count {% if v.inventory_quantity <= 0 %}out{% elsif v.inventory_quantity < 50 %}low{% elsif v.inventory_quantity < 200 %}mid{% endif %}">
-                    {% if v.inventory_quantity > 0 %}
-                      ⭐ {{ v.inventory_quantity }}
-                    {% else %}
-                      Sold Out
-                    {% endif %}
-                  </span>
+                  {% if v.inventory_quantity > 0 %}
+                    <span class="ss-stock-badge {% if v.inventory_quantity < 50 %}stock-low{% elsif v.inventory_quantity < 200 %}stock-mid{% else %}stock-high{% endif %}">
+                      {% if v.inventory_quantity >= 1000 %}
+                        {% assign k_val = v.inventory_quantity | divided_by: 100 | times: 1 %}
+                        {% assign k_whole = k_val | divided_by: 10 %}
+                        {% assign k_decimal = k_val | modulo: 10 %}
+                        {% if k_decimal == 0 %}
+                          {{ k_whole }}k
+                        {% else %}
+                          {{ k_whole }}.{{ k_decimal }}k
+                        {% endif %}
+                      {% else %}
+                        {{ v.inventory_quantity }}
+                      {% endif %}
+                    </span>
+                  {% else %}
+                    <span class="ss-stock-badge stock-out">Out</span>
+                  {% endif %}
                 </div>
                 <input type="number"
                        class="ss-input-field"
@@ -661,67 +672,96 @@
   font-weight: 700;
 }
 
-/* GRID LAYOUT (Replacing old cards) */
+/* GRID LAYOUT */
 .ss-grid-layout {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
+  gap: 12px;
   margin-bottom: 40px;
 }
 
-/* SIZE INPUT ITEM (The New "Card") */
+/* SIZE INPUT ITEM */
 .ss-size-item {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 6px;
+  padding: 10px 6px 8px;
+  border-radius: 14px;
+  background: #fafafa;
+  border: 1.5px solid #eee;
+  transition: all 0.2s ease;
+}
+.ss-size-item:hover {
+  border-color: #d1d5db;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.ss-size-item:has(.ss-input-field:focus) {
+  border-color: #111;
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
 }
 
-.ss-size-label-row {
+.ss-size-header {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  padding: 0 4px;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
 }
 .ss-size-name {
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 800;
   color: #111;
+  letter-spacing: 0.02em;
 }
-/* Stock Count with Gold Star */
-.ss-stock-count {
+
+/* Stock Badge — pill style */
+.ss-stock-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 10px;
-  font-weight: 600;
-  color: #a3a3a3;
-  letter-spacing: 0.01em;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  letter-spacing: 0.03em;
   white-space: nowrap;
+  line-height: 1.4;
 }
-.ss-stock-count.mid {
-  color: #d97706;
+.ss-stock-badge.stock-high {
+  background: #dcfce7;
+  color: #15803d;
 }
-.ss-stock-count.low {
-  color: #ef4444;
-  animation: ss-stock-blink 2s ease-in-out infinite;
+.ss-stock-badge.stock-mid {
+  background: #fef3c7;
+  color: #b45309;
 }
-.ss-stock-count.out {
-  color: #d1d5db;
+.ss-stock-badge.stock-low {
+  background: #fee2e2;
+  color: #dc2626;
+  animation: ss-stock-pulse 2s ease-in-out infinite;
+}
+.ss-stock-badge.stock-out {
+  background: #f3f4f6;
+  color: #9ca3af;
   font-style: italic;
   font-weight: 500;
 }
-@keyframes ss-stock-blink {
-  0%,100% { opacity: 1; }
-  50% { opacity: 0.5; }
+@keyframes ss-stock-pulse {
+  0%,100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(0.97); }
 }
 
-/* 2026 Input Style: Soft Filled, No heavy border */
+/* Input Style */
 .ss-input-field {
   width: 100%;
-  height: 50px;
-  background: #f3f4f6; /* Soft gray fill */
-  border: 2px solid transparent;
-  border-radius: 12px;
+  height: 46px;
+  background: #fff;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
   text-align: center;
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 700;
   color: #111;
   transition: all 0.2s;
   outline: none;
@@ -729,19 +769,20 @@
 .ss-input-field:focus {
   background: #fff;
   border-color: #111;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
 }
 .ss-input-field:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
   background: #f9fafb;
+  border-color: #f3f4f6;
 }
 .ss-price-hint {
   font-size: 11px;
-  color: #666;
+  color: #888;
   text-align: center;
-  margin-top: 4px;
-  font-weight: 500;
+  margin-top: 2px;
+  font-weight: 600;
   cursor: help;
   position: relative;
 }
