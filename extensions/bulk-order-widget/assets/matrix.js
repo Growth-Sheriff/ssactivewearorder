@@ -7,7 +7,33 @@
   window.volumeRules = window.volumeRules || {};
   window.shippingData = window.shippingData || {};
 
-  document.addEventListener("DOMContentLoaded", initVariantWidgets);
+  document.addEventListener("DOMContentLoaded", function () {
+    renderLocationSVGs();
+    initVariantWidgets();
+  });
+
+  /* ─── T-shirt SVG icons for upload location cards ─── */
+  function renderLocationSVGs() {
+    var teeBase = '<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">'
+      + '<path d="M30 25 L20 30 L10 45 L22 50 L25 40 L25 85 L75 85 L75 40 L78 50 L90 45 L80 30 L70 25 L62 20 L38 20 L30 25Z" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5" stroke-linejoin="round"/>'
+      + '<path d="M38 20 Q50 28 62 20" fill="none" stroke="#94a3b8" stroke-width="1.5"/>';
+    var highlights = {
+      full_front:    '<rect x="30" y="35" width="40" height="40" rx="4" fill="#5eead4" fill-opacity="0.5" stroke="#14b8a6" stroke-width="1.5"/>',
+      full_back:     '<rect x="30" y="35" width="40" height="40" rx="4" fill="#818cf8" fill-opacity="0.5" stroke="#6366f1" stroke-width="1.5"/>'
+                   + '<line x1="40" y1="45" x2="60" y2="45" stroke="#6366f1" stroke-width="1" stroke-dasharray="3 2"/>'
+                   + '<line x1="40" y1="55" x2="60" y2="55" stroke="#6366f1" stroke-width="1" stroke-dasharray="3 2"/>',
+      left_chest:    '<rect x="30" y="35" width="16" height="14" rx="3" fill="#5eead4" fill-opacity="0.6" stroke="#14b8a6" stroke-width="1.5"/>',
+      right_chest:   '<rect x="54" y="35" width="16" height="14" rx="3" fill="#fb923c" fill-opacity="0.5" stroke="#f97316" stroke-width="1.5"/>',
+      left_sleeve:   '<rect x="12" y="32" width="14" height="12" rx="3" fill="#a78bfa" fill-opacity="0.5" stroke="#8b5cf6" stroke-width="1.5" transform="rotate(-15 19 38)"/>',
+      right_sleeve:  '<rect x="74" y="32" width="14" height="12" rx="3" fill="#f472b6" fill-opacity="0.5" stroke="#ec4899" stroke-width="1.5" transform="rotate(15 81 38)"/>',
+      _default:      '<rect x="35" y="40" width="30" height="30" rx="4" fill="#94a3b8" fill-opacity="0.3" stroke="#94a3b8" stroke-width="1.5"/>'
+    };
+    document.querySelectorAll(".ss-location-svg").forEach(function (el) {
+      var loc = el.dataset.location || "";
+      var hl = highlights[loc] || highlights._default;
+      el.innerHTML = teeBase + hl + '</svg>';
+    });
+  }
 
   function initVariantWidgets() {
     var widgets = document.querySelectorAll('[id^="ss-matrix-widget-"]');
@@ -81,7 +107,7 @@
               var loc = data.locations[i];
               html += '<div class="ss-upload-card" onclick="document.getElementById(\'file-input-' + loc.name + '-' + blockId + '\').click()">';
               html += '  <div class="ss-upload-content" id="placeholder-' + loc.name + '-' + blockId + '">';
-              html += '    <span class="ss-upload-icon">+</span>';
+              html += '    <div class="ss-location-svg" data-location="' + loc.name + '"></div>';
               html += '    <span class="ss-upload-text">' + loc.label + '</span>';
               html += '  </div>';
               html += '  <div class="ss-upload-preview" id="preview-' + loc.name + '-' + blockId + '" style="display:none;">';
@@ -93,6 +119,7 @@
               html += '</div>';
             }
             uploadRow.innerHTML = html;
+            renderLocationSVGs(); // Apply SVG icons to new cards
             console.log("[SS-Widget] Upload locations loaded from DB:", data.locations.length);
           })
           .catch(function (e) { console.warn("[SS-Widget] upload locations fetch", e); });
@@ -155,6 +182,58 @@
     var mc = container.querySelector(".ss-matrix-container");
     if (mc) mc.style.display = "block";
     window.updateMatrixTotal(blockId);
+
+    // ── Sync theme gallery: update main product image when color changes ──
+    try {
+      var variants = [];
+      try { variants = JSON.parse(container.dataset.variants || "[]"); } catch (e) {}
+      var matchedVariant = null;
+      for (var i = 0; i < variants.length; i++) {
+        if (variants[i].option1 === colorName) { matchedVariant = variants[i]; break; }
+      }
+      if (matchedVariant && matchedVariant.id) {
+        // Method 1: Update URL so theme picks up the variant change
+        var url = new URL(window.location.href);
+        url.searchParams.set("variant", matchedVariant.id.toString());
+        window.history.replaceState({}, "", url.toString());
+
+        // Method 2: Dispatch variant change event (Dawn & modern themes listen for this)
+        window.dispatchEvent(new CustomEvent("variant:change", {
+          detail: { variant: matchedVariant }
+        }));
+
+        // Method 3: Try to trigger theme's native variant selector
+        // Look for radio/select inputs and click/change the matching one
+        var themeInputs = document.querySelectorAll(
+          'input[type="radio"][value="' + colorName + '"], ' +
+          'fieldset input[value="' + colorName + '"], ' +
+          '.swatch-input[value="' + colorName + '"]'
+        );
+        themeInputs.forEach(function (inp) {
+          if (!inp.checked) {
+            inp.checked = true;
+            inp.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+        });
+
+        // Method 4: Find matching product image and click it in gallery
+        if (matchedVariant.featured_image && matchedVariant.featured_image.src) {
+          var imgSrc = matchedVariant.featured_image.src;
+          // Try to find and click the thumbnail in the theme gallery
+          var thumbs = document.querySelectorAll(
+            '.product__media-list img, .product-gallery img, ' +
+            '[data-product-media-type="image"] img, .thumbnail-list img'
+          );
+          thumbs.forEach(function (thumb) {
+            if (thumb.src && thumb.src.indexOf(imgSrc.split("?")[0].split("/").pop().split(".")[0]) > -1) {
+              thumb.click();
+            }
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("[SS-Widget] gallery sync:", e);
+    }
   };
 
   /* ═══════════════════════════════════════════════════════

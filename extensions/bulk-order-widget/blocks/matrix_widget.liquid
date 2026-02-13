@@ -89,7 +89,7 @@
   </div>
 
   <!-- 3. SIZE & QUANTITY MATRIX (Static Render) -->
-  <div class="ss-section ss-matrix-container">
+  <div class="ss-section ss-matrix-container ss-matrix-bordered">
     <div class="ss-label" style="font-size:14px; font-weight:700; margin-bottom:15px; color:#111;">SELECT QUANTITIES</div>
 
     {% for color_name in unique_colors %}
@@ -151,7 +151,7 @@
         {% for location in upload_locations %}
           <div class="ss-upload-card" onclick="document.getElementById('file-input-{{ location.name }}-{{ block.id }}').click()">
             <div class="ss-upload-content" id="placeholder-{{ location.name }}-{{ block.id }}">
-               <span class="ss-upload-icon">+</span>
+               <div class="ss-location-svg" data-location="{{ location.name }}"></div>
                <span class="ss-upload-text">{{ location.label }}</span>
             </div>
 
@@ -173,8 +173,8 @@
       <div class="ss-upload-row" id="ss-upload-row-{{ block.id }}">
         <div class="ss-upload-card" onclick="document.getElementById('file-input-full_front-{{ block.id }}').click()">
           <div class="ss-upload-content" id="placeholder-full_front-{{ block.id }}">
-            <span class="ss-upload-icon">+</span>
-            <span class="ss-upload-text">Front</span>
+            <div class="ss-location-svg" data-location="full_front"></div>
+            <span class="ss-upload-text">Full Front</span>
           </div>
           <div class="ss-upload-preview" id="preview-full_front-{{ block.id }}" style="display:none;">
             <div class="ss-preview-image"></div>
@@ -185,8 +185,8 @@
         </div>
         <div class="ss-upload-card" onclick="document.getElementById('file-input-full_back-{{ block.id }}').click()">
           <div class="ss-upload-content" id="placeholder-full_back-{{ block.id }}">
-            <span class="ss-upload-icon">+</span>
-            <span class="ss-upload-text">Back</span>
+            <div class="ss-location-svg" data-location="full_back"></div>
+            <span class="ss-upload-text">Full Back</span>
           </div>
           <div class="ss-upload-preview" id="preview-full_back-{{ block.id }}" style="display:none;">
             <div class="ss-preview-image"></div>
@@ -672,12 +672,20 @@
   font-weight: 700;
 }
 
+/* SIZE MATRIX BLUE BORDER */
+.ss-matrix-bordered {
+  border: 1.5px solid #93c5fd;
+  border-radius: 16px;
+  padding: 20px;
+  background: #f8faff;
+}
+
 /* GRID LAYOUT */
 .ss-grid-layout {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
   gap: 12px;
-  margin-bottom: 40px;
+  margin-bottom: 20px;
 }
 
 /* SIZE INPUT ITEM */
@@ -868,10 +876,20 @@
   font-size: 24px;
   color: #9ca3af;
 }
+.ss-location-svg {
+  width: 56px;
+  height: 56px;
+}
+.ss-location-svg svg {
+  width: 100%;
+  height: 100%;
+}
 .ss-upload-text {
-  font-size: 12px;
-  font-weight: 600;
-  color: #4b5563;
+  font-size: 11px;
+  font-weight: 700;
+  color: #374151;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 .ss-preview-image {
   position: absolute;
