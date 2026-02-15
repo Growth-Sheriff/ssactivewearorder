@@ -25,16 +25,32 @@ description: Deploy changes to production server via Git + Docker
 
 ---
 
+## Veritabanı Bilgileri (PostgreSQL - DigitalOcean Managed)
+
+| Bilgi | Değer |
+|-------|-------|
+| **Provider** | PostgreSQL (DigitalOcean Managed Database) |
+| **Host** | `private-db-postgresql-nyc3-64923-do-user-33221790-0.f.db.ondigitalocean.com` |
+| **Port** | `25060` |
+| **Database** | `ssactivewear_db` |
+| **User** | `doadmin` |
+| **SSL** | `sslmode=no-verify` |
+| **Prisma Provider** | `postgresql` |
+| **Prisma URL** | `env("DATABASE_URL")` |
+
+> ⚠️ **ESKİ SQLite kullanılmıyor!** `file:dev.sqlite` referansı, `better-sqlite3` paketi ve SQLite volume mount artık geçersiz.
+
+---
+
 ## Dizin Yapısı (Sunucuda)
 
 ```
 /opt/apps/custom/ssactivewear/everydaycustomprint/
 ├── docker-compose.yml          # Container tanımı
 ├── Dockerfile                  # Build dosyası
-├── .env                        # Environment variables
-└── prisma/                     # Veritabanı ve Schema
-    ├── schema.prisma
-    ├── dev.sqlite              # SQLite veritabanı dosyası
+├── .env                        # Environment variables (DATABASE_URL burada)
+└── prisma/
+    ├── schema.prisma           # PostgreSQL provider
     └── migrations/
 ```
 
@@ -76,7 +92,7 @@ ssh appserver "cd /opt/apps/custom/ssactivewear/everydaycustomprint && git pull 
 
 ### Adım 3: Shopify Extension Deploy (widget/extension değişikliklerinde)
 ```powershell
-npm run deploy -- --force
+npx shopify app deploy --force
 ```
 Extension deploy'da "Release" sorusu gelirse `y` ile onayla.
 
@@ -111,23 +127,33 @@ ssh appserver "sudo docker restart ssactivewear-everydaycustomprint"
 
 ---
 
-## Veritabanı İşlemleri (SQLite)
+## Veritabanı İşlemleri (PostgreSQL)
 
-Bu uygulama SQLite kullanır. Veritabanı dosyası container içinde `/app/prisma/dev.sqlite` yolundadır ve sunucuda volume olarak map edilmiştir.
-
-### Prisma Migration
-```bash
-ssh appserver "sudo docker exec ssactivewear-everydaycustomprint npx prisma migrate deploy"
-```
+Veritabanı artık DigitalOcean Managed PostgreSQL üzerinde çalışıyor. Container içinden erişiliyor (private network üzerinden).
 
 ### Prisma DB Push (schema değişikliği)
 ```bash
 ssh appserver "sudo docker exec ssactivewear-everydaycustomprint npx prisma db push"
 ```
 
-### Veritabanı Yedeği Almak
+### Prisma Migration Deploy
 ```bash
-ssh appserver "cp /opt/apps/custom/ssactivewear/everydaycustomprint/prisma/dev.sqlite /opt/apps/custom/ssactivewear/everydaycustomprint/prisma/dev.sqlite.bak_$(date +%Y%m%d)"
+ssh appserver "sudo docker exec ssactivewear-everydaycustomprint npx prisma migrate deploy"
+```
+
+### Prisma Studio (debug için - geçici)
+```bash
+ssh appserver "sudo docker exec ssactivewear-everydaycustomprint npx prisma studio"
+```
+
+### Veritabanı Yedeği (pg_dump - container içinden)
+```bash
+ssh appserver "sudo docker exec ssactivewear-everydaycustomprint sh -c 'npx prisma db execute --stdin <<< \"SELECT count(*) FROM \\\"Session\\\"\"'"
+```
+
+### Doğrudan PostgreSQL Bağlantısı (container içinden)
+```bash
+ssh appserver "sudo docker exec ssactivewear-everydaycustomprint npx prisma db execute --stdin"
 ```
 
 ---
@@ -136,7 +162,7 @@ ssh appserver "cp /opt/apps/custom/ssactivewear/everydaycustomprint/prisma/dev.s
 
 | Değişken | Değer | Açıklama |
 |----------|-------|----------|
-| `DATABASE_URL` | `file:./dev.sqlite` | SQLite bağlantısı |
+| `DATABASE_URL` | `postgresql://doadmin:...@private-db-...:25060/ssactivewear_db?sslmode=no-verify&schema=public` | PostgreSQL bağlantısı |
 | `REDIS_URL` | `redis://redis:6379/0` | Shared Redis, DB index 0 |
 | `SHOPIFY_APP_URL` | `https://ssaw-e.techifyboost.com` | Uygulama domaini |
 | `SHOPIFY_API_KEY` | `d5568d43c70e94118794afd517b5d8ef` | Shopify Client ID |
@@ -158,8 +184,11 @@ ssh appserver "cp /opt/apps/custom/ssactivewear/everydaycustomprint/prisma/dev.s
 
 ## ⚠️ Önemli Notlar
 
-1. **SQLite dikkat**: Veritabanı dosya bazlı, silinirse tüm veriler gider. Deploy öncesi yedek almak iyi pratiktir.
-2. **Caddy ayarları** `/opt/apps/caddy/Caddyfile` içindedir — DOKUNMA.
-3. **Redis** paylaşımlı, DB index 0 kullanılıyor.
-4. **Extension deploy** sadece widget (liquid/JS) değişikliklerinde gereklidir, backend değişikliklerinde gerekmez.
-5. **Eski sunucu bilgileri geçersiz** — `ssaw-e.techifyboost.com` / `5.78.132.44` / PM2 artık kullanılmıyor. Yeni sunucu `104.236.78.45` / `ssh appserver` / Docker.
+1. **PostgreSQL kullanılıyor** — `file:dev.sqlite` artık geçersiz. Prisma schema'da `provider = "postgresql"` ve `url = env("DATABASE_URL")` olmalı.
+2. **Veritabanı DigitalOcean Managed** — Private network üzerinden erişiliyor, SSL ile (`sslmode=no-verify`).
+3. **Docker volume mount yok** — Eski SQLite volume (`./prisma/dev.sqlite:/app/prisma/dev.sqlite`) kaldırıldı.
+4. **Caddy ayarları** `/opt/apps/caddy/Caddyfile` içindedir — DOKUNMA.
+5. **Redis** paylaşımlı, DB index 0 kullanılıyor.
+6. **Extension deploy** sadece widget (liquid/JS) değişikliklerinde gereklidir, backend değişikliklerinde gerekmez.
+7. **33 tablo** PostgreSQL'de oluşturuldu, tüm mevcut veri aktarıldı.
+8. **updatedAt** alanları PostgreSQL trigger fonksiyonu ile yönetiliyor (Prisma'nın `@updatedAt` yerine).
