@@ -3,6 +3,9 @@ name: Build & Deploy SSActiveWear
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.agent/**'
   workflow_dispatch:
 
 env:
@@ -50,19 +53,23 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
+          envs: GITHUB_TOKEN
           script: |
+            # Login to GHCR on server using the workflow's GITHUB_TOKEN
+            echo "${GITHUB_TOKEN}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
             cd /opt/apps/custom/ssactivewear/everydaycustomprint
 
             # Pull latest image
             sudo docker pull ghcr.io/${{ github.repository }}:latest
 
             # Restart with new image
-            sudo docker compose up -d
+            sudo docker compose up -d --force-recreate
 
-            # Run prisma migrations inside container
-            sleep 5
-            sudo docker exec ssactivewear-everydaycustomprint npx prisma generate
-            sudo docker exec ssactivewear-everydaycustomprint npx prisma db push --skip-generate --accept-data-loss
+            # Wait for container to be ready
+            sleep 10
 
             # Verify container is running
-            sudo docker ps --filter name=ssactivewear-everydaycustomprint
+            sudo docker ps --filter name=ssactivewear-everydaycustomprint --format "{{.Status}}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
