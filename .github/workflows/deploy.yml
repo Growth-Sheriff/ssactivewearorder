@@ -56,21 +56,26 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           envs: GITHUB_TOKEN
           script: |
-            # Login to GHCR on server using the workflow's GITHUB_TOKEN
+            set -e
+
+            IMAGE="ghcr.io/growth-sheriff/ssactivewearorder:latest"
+
+            # Login to GHCR on server
             echo "${GITHUB_TOKEN}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            cd /opt/apps/custom/ssactivewear/everydaycustomprint
+            # Pull latest image (fail if pull fails)
+            sudo docker pull ${IMAGE}
 
-            # Pull latest image
-            sudo docker pull ghcr.io/${{ github.repository }}:latest
+            cd /opt/apps/custom/ssactivewear/everydaycustomprint
 
             # Restart with new image
             sudo docker compose up -d --force-recreate
 
-            # Wait for container to be ready
+            # Wait and verify
             sleep 10
-
-            # Verify container is running
             sudo docker ps --filter name=ssactivewear-everydaycustomprint --format "{{.Status}}"
+
+            # Verify new image is running
+            sudo docker inspect ssactivewear-everydaycustomprint --format "Image: {{.Config.Image}} Created: {{.Created}}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
