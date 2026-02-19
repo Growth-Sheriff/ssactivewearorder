@@ -115,6 +115,7 @@
               html += '    <button class="ss-remove-btn" onclick="event.stopPropagation(); window.removeUpload(\'' + loc.name + '\', \'' + blockId + '\')">×</button>';
               html += '  </div>';
               html += '  <input type="file" id="file-input-' + loc.name + '-' + blockId + '" hidden';
+              html += '         accept="image/*,.pdf,.ai,.eps,.psd,.svg"';
               html += '         onchange="window.handleFileUpload(this, \'' + loc.name + '\', \'' + blockId + '\')">';
               html += '</div>';
             }
@@ -709,10 +710,17 @@
         placeholder.style.display = "none";
         preview.style.display = "flex";
         var imgBox = preview.querySelector(".ss-preview-image");
-        if (file.type.startsWith("image")) {
+        var ext = file.name.split(".").pop().toLowerCase();
+        var imageExts = ["jpg","jpeg","png","gif","webp","svg","bmp","tiff","tif","avif","heic","ico"];
+        if (file.type.startsWith("image") || imageExts.indexOf(ext) > -1) {
           imgBox.innerHTML = '<img src="' + json.url + '" style="width:100%;height:100%;object-fit:cover;border-radius:12px" width="120" height="120">';
         } else {
-          imgBox.innerHTML = "📄";
+          // Show file type icon for non-image files
+          var icons = { pdf: "📄", ai: "🎨", eps: "🎨", psd: "🖼️", svg: "📐" };
+          var icon = icons[ext] || "📎";
+          imgBox.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px">' +
+            '<span style="font-size:32px">' + icon + '</span>' +
+            '<span style="font-size:11px;color:#64748b;word-break:break-all">' + file.name + '</span></div>';
         }
       })
       .catch(function (e) {

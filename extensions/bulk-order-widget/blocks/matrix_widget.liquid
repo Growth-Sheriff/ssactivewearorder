@@ -161,6 +161,7 @@
             </div>
 
             <input type="file" id="file-input-{{ location.name }}-{{ block.id }}" hidden
+                   accept="image/*,.pdf,.ai,.eps,.psd,.svg"
                    onchange="window.handleFileUpload(this, '{{ location.name }}', '{{ block.id }}')">
           </div>
         {% endfor %}
@@ -181,6 +182,7 @@
             <button class="ss-remove-btn" onclick="event.stopPropagation(); window.removeUpload('full_front', '{{ block.id }}')">×</button>
           </div>
           <input type="file" id="file-input-full_front-{{ block.id }}" hidden
+                 accept="image/*,.pdf,.ai,.eps,.psd,.svg"
                  onchange="window.handleFileUpload(this, 'full_front', '{{ block.id }}')">
         </div>
         <div class="ss-upload-card" onclick="document.getElementById('file-input-full_back-{{ block.id }}').click()">
@@ -193,6 +195,7 @@
             <button class="ss-remove-btn" onclick="event.stopPropagation(); window.removeUpload('full_back', '{{ block.id }}')">×</button>
           </div>
           <input type="file" id="file-input-full_back-{{ block.id }}" hidden
+                 accept="image/*,.pdf,.ai,.eps,.psd,.svg"
                  onchange="window.handleFileUpload(this, 'full_back', '{{ block.id }}')">
         </div>
       </div>

@@ -26,8 +26,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   // Default locations if nothing is configured
   const defaultLocations = [
-    { name: "full_front", label: "Front", icon: "full_front", sortOrder: 0 },
-    { name: "full_back", label: "Back", icon: "full_back", sortOrder: 1 },
+    { name: "full_front", label: "Front", icon: "full_front", price: 0, sortOrder: 0 },
+    { name: "full_back", label: "Back", icon: "full_back", price: 0, sortOrder: 1 },
   ];
 
   if (!shop || !productId) {
@@ -42,6 +42,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         name: true,
         label: true,
         iconType: true,
+        price: true,
         sortOrder: true,
       },
     });
@@ -55,6 +56,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         name: l.name,
         label: l.label,
         icon: l.iconType,
+        price: l.price || 0,
         sortOrder: l.sortOrder,
       })),
       source: "database",

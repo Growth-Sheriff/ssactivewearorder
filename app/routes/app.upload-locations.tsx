@@ -210,7 +210,7 @@ export async function action({ request }: ActionFunctionArgs) {
   if (actionType === "save_locations") {
     const shopifyProductId = formData.get("shopifyProductId") as string;
     const locations = JSON.parse(formData.get("locations") as string) as Array<{
-      name: string; label: string; iconType: string;
+      name: string; label: string; iconType: string; price: number;
     }>;
 
     try {
@@ -229,6 +229,7 @@ export async function action({ request }: ActionFunctionArgs) {
             name: loc.name,
             label: loc.label,
             iconType: loc.iconType,
+            price: loc.price || 0,
             sortOrder: i,
           },
         });
@@ -254,6 +255,7 @@ export async function action({ request }: ActionFunctionArgs) {
                 name: l.name,
                 label: l.label,
                 icon: l.iconType,
+                price: l.price || 0,
               }))),
             }],
           },
@@ -271,7 +273,7 @@ export async function action({ request }: ActionFunctionArgs) {
   if (actionType === "bulk_apply") {
     const productIds = JSON.parse(formData.get("productIds") as string) as string[];
     const locations = JSON.parse(formData.get("locations") as string) as Array<{
-      name: string; label: string; iconType: string;
+      name: string; label: string; iconType: string; price: number;
     }>;
 
     let updated = 0;
@@ -288,6 +290,7 @@ export async function action({ request }: ActionFunctionArgs) {
               name: locations[i].name,
               label: locations[i].label,
               iconType: locations[i].iconType,
+              price: locations[i].price || 0,
               sortOrder: i,
             },
           });
@@ -309,7 +312,7 @@ export async function action({ request }: ActionFunctionArgs) {
                 key: "upload_locations",
                 type: "json",
                 value: JSON.stringify(locations.map(l => ({
-                  name: l.name, label: l.label, icon: l.iconType,
+                  name: l.name, label: l.label, icon: l.iconType, price: l.price || 0,
                 }))),
               }],
             },
@@ -358,6 +361,13 @@ function ProductLocationEditor({
     }
     return map;
   });
+  const [locationPrices, setLocationPrices] = useState<Map<string, string>>(() => {
+    const map = new Map<string, string>();
+    for (const loc of product.uploadLocations) {
+      map.set(loc.name, loc.price ? String(loc.price) : "0");
+    }
+    return map;
+  });
   const [isOpen, setIsOpen] = useState(false);
 
   const toggleLocation = (name: string) => {
@@ -367,13 +377,25 @@ function ProductLocationEditor({
     setSelectedLocations(newMap);
   };
 
+  const updatePrice = (name: string, value: string) => {
+    const newMap = new Map(locationPrices);
+    newMap.set(name, value);
+    setLocationPrices(newMap);
+  };
+
   const handleSave = () => {
-    const locs = presets.filter(p => selectedLocations.has(p.name));
+    const locs = presets
+      .filter(p => selectedLocations.has(p.name))
+      .map(p => ({
+        ...p,
+        price: parseFloat(locationPrices.get(p.name) || "0") || 0,
+      }));
     onSave(product.shopifyProductId, locs);
     setIsOpen(false);
   };
 
   const activeCount = product.uploadLocations.length;
+  const totalPrice = product.uploadLocations.reduce((sum: number, loc: any) => sum + (loc.price || 0), 0);
 
   return (
     <div style={{ opacity: product.existsInShopify ? 1 : 0.5 }}>
@@ -388,7 +410,7 @@ function ProductLocationEditor({
             {!product.existsInShopify ? (
               <Badge tone="critical">Deleted from Shopify</Badge>
             ) : activeCount > 0 ? (
-              <Badge tone="success">{`${activeCount} location${activeCount !== 1 ? "s" : ""}`}</Badge>
+              <Badge tone="success">{`${activeCount} loc · $${totalPrice.toFixed(2)}`}</Badge>
             ) : (
               <Badge tone="attention">No locations</Badge>
             )}
@@ -405,7 +427,7 @@ function ProductLocationEditor({
         <Box paddingBlockStart="400" paddingBlockEnd="200">
           <BlockStack gap="300">
             <Text as="p" variant="bodySm" tone="subdued">
-              Select print areas for this product. These will appear on the product page for customers to upload their designs.
+              Select print areas and set prices. Prices will be added per location when a customer uploads a design.
             </Text>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px" }}>
               {presets.map((preset) => {
@@ -413,31 +435,50 @@ function ProductLocationEditor({
                 return (
                   <div
                     key={preset.name}
-                    onClick={() => toggleLocation(preset.name)}
                     style={{
                       border: `2px solid ${isActive ? "#14b8a6" : "#e2e8f0"}`,
                       borderRadius: "12px",
                       padding: "16px",
                       textAlign: "center",
-                      cursor: "pointer",
                       background: isActive ? "#f0fdfa" : "#ffffff",
                       transition: "all 0.2s ease",
                       boxShadow: isActive ? "0 0 0 3px rgba(20,184,166,0.15)" : "none",
                     }}
                   >
-                    <div style={{ display: "flex", justifyContent: "center", marginBottom: "8px" }}>
-                      <LocationIcon iconType={preset.iconType} size={56} />
+                    <div
+                      onClick={() => toggleLocation(preset.name)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "center", marginBottom: "8px" }}>
+                        <LocationIcon iconType={preset.iconType} size={56} />
+                      </div>
+                      <Text as="p" variant="bodySm" fontWeight={isActive ? "bold" : "regular"}>
+                        {preset.label}
+                      </Text>
                     </div>
-                    <Text as="p" variant="bodySm" fontWeight={isActive ? "bold" : "regular"}>
-                      {preset.label}
-                    </Text>
+                    {isActive && (
+                      <div style={{ marginTop: "8px" }} onClick={(e) => e.stopPropagation()}>
+                        <TextField
+                          label="Price ($)"
+                          labelHidden
+                          type="number"
+                          value={locationPrices.get(preset.name) || "0"}
+                          onChange={(val) => updatePrice(preset.name, val)}
+                          prefix="$"
+                          min={0}
+                          step={0.01}
+                          autoComplete="off"
+                          size="slim"
+                        />
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
             <InlineStack align="end">
               <Button variant="primary" onClick={handleSave} loading={isSaving}>
-                Save Locations
+                Save Locations & Prices
               </Button>
             </InlineStack>
           </BlockStack>

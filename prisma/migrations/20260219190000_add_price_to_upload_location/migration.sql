@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "ProductUploadLocation" ADD COLUMN IF NOT EXISTS "price" DOUBLE PRECISION NOT NULL DEFAULT 0;
